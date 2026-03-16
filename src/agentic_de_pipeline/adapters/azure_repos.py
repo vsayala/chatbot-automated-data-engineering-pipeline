@@ -137,7 +137,7 @@ class AzureReposClient:
         self.logger.info("azure_repos_pr_created url=%s", pr_url)
         return pr_url
 
-        def _build_branch_name(self, work_item_id: int, title: str) -> str:
+    def _build_branch_name(self, work_item_id: int, title: str) -> str:
         slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
         slug = slug[:35] if slug else "work-item"
         return f"{self.repo_config.branch_prefix}{work_item_id}-{slug}"

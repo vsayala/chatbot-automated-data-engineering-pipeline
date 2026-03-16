@@ -1,0 +1,41 @@
+app_name: "agentic-data-engineering-cicd"
+local_mode: true
+
+azure_devops:
+  organization_url: "https://dev.azure.com/your-org"
+  project: "data-engineering"
+  personal_access_token_env: "AZDO_PAT"
+  query_id: ""
+  mock_data_path: "sample_data/work_items.json"
+
+azure_pipelines:
+  organization_url: "https://dev.azure.com/your-org"
+  project: "data-engineering"
+  pipeline_name_prefix: "de-cicd"
+  personal_access_token_env: "AZDO_PAT"
+
+databricks:
+  workspace_urls:
+    dev: "https://adb-dev.azuredatabricks.net"
+    qe: "https://adb-qe.azuredatabricks.net"
+    stg: "https://adb-stg.azuredatabricks.net"
+    prod: "https://adb-prod.azuredatabricks.net"
+  token_env: "DATABRICKS_TOKEN"
+  job_yaml_folder: "jobs"
+
+approvals:
+  mode: "api"
+  timeout_seconds: 1200
+  auto_approve_stages:
+    - "dev"
+  state_file: "state/approvals_state.json"
+
+logging:
+  log_dir: "logs"
+  log_level: "INFO"
+
+runtime:
+  poll_interval_seconds: 30
+  max_work_items_per_run: 1
+
+learning_store_path: "state/learning_memory.json"

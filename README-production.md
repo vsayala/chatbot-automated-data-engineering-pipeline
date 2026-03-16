@@ -11,9 +11,11 @@ Deploy this agentic CI/CD system in enterprise environments using:
 - Priority-based intake from PBIs/Bugs/User Stories
 - Repo identification from work-item tags or default repo config
 - Branch-per-work-item automation (`feature/pbi-<id>-...`)
+- New repository provisioning when required (config-controlled)
 - Developer checks before CI/CD
 - PR creation hooks for QE promotion workflows
 - Stage-by-stage approvals and test controls
+- Clarification loop for incomplete requirements with DevOps discussion audit record
 - Preflight connectivity validation and fail-fast startup
 - Retry policy for transient external API failures
 - Idempotent work-item processing to avoid duplicate deployments

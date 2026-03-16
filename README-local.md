@@ -12,13 +12,14 @@ This project implements a local-first, human-in-the-loop agentic workflow for da
 1. Reads DevOps work items and ranks by **priority**.
 2. Infers target repo from tags (example: `repo:data-engineering-repo`) or default config.
 3. Generates branch name with work item ID (`feature/pbi-<id>-...`).
-4. Executes developer workflow (branch, basic tests, commit/push, PR hook).
+4. Executes developer workflow (repo ensure/create, branch, basic tests, commit/push, PR hook).
 5. Runs stage flow Dev -> QE -> STG -> PROD with mandatory approvals.
 6. Keeps learning memory for future ranking/context.
 7. Uses prompt templates and optional hosted LLM endpoint.
 8. Supports MCP server action routing for external tool integrations.
 9. Runs preflight connectivity checks before execution.
 10. Uses retries + idempotency to reduce transient failures and duplicate processing.
+11. Requests HIL clarifications for incomplete PBIs/stories/bugs and records answers in DevOps discussion comments.
 
 ## Architecture (Local Runtime)
 ```text
@@ -103,7 +104,19 @@ Each integration accepts either:
    curl http://localhost:8000/approvals/pending-with-suggestions
    ```
 
-9. Submit decision:
+9. View pending clarification questions:
+   ```bash
+   curl http://localhost:8000/clarifications/pending
+   ```
+
+10. Submit clarification answers:
+   ```bash
+   curl -X POST "http://localhost:8000/clarifications/<request_id>/response" \
+     -H "Content-Type: application/json" \
+     -d '{"responder":"engineer@local","answers":{"Provide catalog.schema.table":"main.bronze.customer_dim","Should ingestion mode be append or overwrite?":"append"}}'
+   ```
+
+11. Submit approval decision:
    ```bash
    curl -X POST "http://localhost:8000/approvals/<request_id>/decision" \
      -H "Content-Type: application/json" \

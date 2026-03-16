@@ -28,6 +28,9 @@ azure_repos:
   default_base_branch: "main"
   branch_prefix: "feature/pbi-"
   local_checkout_path: "."
+  local_checkout_root: "."
+  allow_multi_repo_routing: true
+  auto_create_repository_if_missing: true
   personal_access_token_env: "AZDO_PAT"
   personal_access_token: ""
   dry_run: false

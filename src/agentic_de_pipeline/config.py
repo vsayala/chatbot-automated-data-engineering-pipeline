@@ -51,6 +51,9 @@ class AzureReposConfig(BaseModel):
     default_base_branch: str = "main"
     branch_prefix: str = "feature/pbi-"
     local_checkout_path: str = "."
+    local_checkout_root: str = "."
+    allow_multi_repo_routing: bool = True
+    auto_create_repository_if_missing: bool = True
     personal_access_token_env: str = "AZDO_PAT"
     personal_access_token: str | None = None
     dry_run: bool = True

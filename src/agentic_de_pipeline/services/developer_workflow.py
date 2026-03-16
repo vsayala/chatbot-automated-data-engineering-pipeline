@@ -26,29 +26,25 @@ class DeveloperWorkflowService:
             return "skipped", "Repository automation disabled in runtime config"
 
         try:
-            configured_repo = self.repos_client.repo_config.repository_name
-            if plan.target_repo != configured_repo:
-                message = (
-                    f"target_repo={plan.target_repo} does not match configured repository={configured_repo}. "
-                    "Update azure_repos.repository_name/local_checkout_path or add repo routing support."
-                )
-                if self.repos_client.repo_config.dry_run:
-                    self.logger.warning("developer_workflow_repo_mismatch %s", message)
-                else:
-                    return "failed", message
+            ready, repo_msg = self.repos_client.ensure_repository(plan.target_repo)
+            if not ready:
+                return "failed", repo_msg
 
-            branch_name = self.repos_client.prepare_branch(work_item)
+            branch_name = self.repos_client.prepare_branch(work_item, plan.target_repo)
             change_file = "dry-run/no-change-file"
             if not self.repos_client.repo_config.dry_run:
                 change_file = self._write_work_item_change_stub(work_item, plan)
 
-            tests_passed, test_output = self.repos_client.run_basic_tests()
+            tests_passed, test_output = self.repos_client.run_basic_tests(plan.target_repo)
             if not tests_passed:
                 return "failed", f"basic tests failed on branch={branch_name}. output={test_output}"
 
-            branch_name = self.repos_client.commit_and_push(work_item)
-            pr_url = self.repos_client.create_pull_request(work_item, branch_name)
-            detail = f"branch={branch_name}; change_file={change_file}; tests=passed; pr={pr_url}"
+            branch_name = self.repos_client.commit_and_push(work_item, plan.target_repo)
+            pr_url = self.repos_client.create_pull_request(work_item, branch_name, plan.target_repo)
+            detail = (
+                f"repo={plan.target_repo}; repo_status={repo_msg}; branch={branch_name}; "
+                f"change_file={change_file}; tests=passed; pr={pr_url}"
+            )
             self.logger.info("developer_workflow_completed work_item_id=%s", work_item.id)
             return "succeeded", detail
         except Exception as exc:  # pylint: disable=broad-except

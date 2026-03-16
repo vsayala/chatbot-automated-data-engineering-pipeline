@@ -71,3 +71,48 @@ def test_requirement_agent_extracts_core_fields(tmp_path) -> None:
     assert plan.branch_name.startswith("feature/pbi-25-")
     assert "create_unity_catalog_table" in plan.notebook_tasks
     assert any("overwrite" in note.lower() for note in plan.risk_notes)
+    assert plan.needs_clarification is False
+
+
+def test_requirement_agent_generates_clarification_questions(tmp_path) -> None:
+    """Agent should request clarification when key requirement details are missing."""
+    learning_store = LearningStore(str(tmp_path / "learning.json"))
+
+    class PromptConfigStub:
+        enabled = True
+        templates_path = "config/prompts.yaml"
+        llm_enabled = False
+        llm_endpoint_url = None
+        llm_model = ""
+        llm_api_key_env = ""
+        llm_api_key = None
+
+    class MCPConfigStub:
+        enabled = False
+        servers = {}
+        server_tokens = {}
+
+    agent = RequirementAgent(
+        log_dir=str(tmp_path / "logs"),
+        learning_store=learning_store,
+        prompt_engine=PromptEngine(PromptConfigStub(), str(tmp_path / "logs")),
+        mcp_router=MCPRouter(MCPConfigStub(), str(tmp_path / "logs")),
+        default_repo_name="default-repo",
+        branch_prefix="feature/pbi-",
+        retry_policy=RetryPolicy(attempts=1),
+        fail_on_mcp_error=False,
+    )
+
+    work_item = WorkItem(
+        id=99,
+        title="Create customer data pipeline",
+        description="Need ingestion pipeline",
+        item_type=WorkItemType.USER_STORY,
+        acceptance_criteria="",
+        repo_name=None,
+    )
+
+    plan = agent.build_plan(work_item)
+
+    assert plan.needs_clarification is True
+    assert len(plan.clarification_questions) >= 3

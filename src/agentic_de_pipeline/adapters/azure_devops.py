@@ -37,6 +37,10 @@ class AzureDevOpsClient:
                 return self._load_mock_work_items(limit=limit)
             return self._fetch_from_azure_devops(limit=limit)
 
+    def fetch_active_work_items(self, limit: int = 50) -> list[WorkItem]:
+        """Fetch active work items for HIL clarification review."""
+        return self.fetch_open_work_items(limit=limit)
+
     def _load_mock_work_items(self, limit: int) -> list[WorkItem]:
         """Load mock work items for local development and sort by priority."""
         path = Path(self.config.azure_devops.mock_data_path)
@@ -60,6 +64,7 @@ class AzureDevOpsClient:
                     acceptance_criteria=str(row.get("acceptance_criteria", "")),
                     priority=int(row.get("priority", 9999)),
                     repo_name=repo_name,
+                    state=str(row.get("state", "Active")),
                 )
             )
 
@@ -112,7 +117,7 @@ class AzureDevOpsClient:
         detail_url = (
             f"{org_url}/{project}/_apis/wit/workitems"
             f"?ids={','.join(ids)}"
-            "&fields=System.Id,System.Title,System.Description,System.WorkItemType,System.Tags,"
+            "&fields=System.Id,System.Title,System.Description,System.WorkItemType,System.State,System.Tags,"
             f"Microsoft.VSTS.Common.AcceptanceCriteria,{priority_field}"
             "&api-version=7.0"
         )
@@ -150,12 +155,56 @@ class AzureDevOpsClient:
                     acceptance_criteria=str(fields.get("Microsoft.VSTS.Common.AcceptanceCriteria", "")),
                     priority=int(fields.get(priority_field, 9999)),
                     repo_name=repo_name,
+                    state=str(fields.get("System.State", "Active")),
                 )
             )
 
         ranked = sorted(output, key=lambda item: (item.priority, item.id))
         self.logger.info("azure_devops_work_items_loaded count=%s", len(ranked))
         return ranked[:limit]
+
+    def add_work_item_discussion_comment(self, work_item_id: int, comment: str) -> str:
+        """Add clarification/comment record into Azure DevOps work item discussion."""
+        if self.config.local_mode:
+            self.logger.info("local_discussion_comment_saved work_item_id=%s comment=%s", work_item_id, comment)
+            return "local-comment-saved"
+
+        import base64
+        import urllib.request
+
+        pat = resolve_secret(
+            direct_value=self.config.azure_devops.personal_access_token,
+            env_name=self.config.azure_devops.personal_access_token_env,
+            secret_label="Azure DevOps PAT",
+            required=True,
+        )
+        basic = base64.b64encode(f":{pat}".encode("utf-8")).decode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Basic {basic}",
+        }
+        org_url = self.config.azure_devops.organization_url.rstrip("/")
+        project = self.config.azure_devops.project
+        url = (
+            f"{org_url}/{project}/_apis/wit/workItems/{work_item_id}/comments"
+            "?api-version=7.1-preview.3"
+        )
+        payload = json.dumps({"text": comment}).encode("utf-8")
+        request = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+
+        def _post_comment() -> dict:
+            with urllib.request.urlopen(request, timeout=30) as resp:  # nosec B310
+                return json.loads(resp.read().decode("utf-8"))
+
+        response = run_with_retry(
+            operation_name=f"azure_devops_comment_{work_item_id}",
+            action=_post_comment,
+            policy=self.retry_policy,
+            logger=self.logger,
+        )
+        comment_id = str(response.get("id", ""))
+        self.logger.info("work_item_comment_added work_item_id=%s comment_id=%s", work_item_id, comment_id)
+        return comment_id
 
     def _extract_repo_name(self, tags: list[str]) -> str | None:
         """Extract repository hint from tags such as repo:analytics-platform."""

@@ -106,6 +106,56 @@ class AgenticOrchestrator:
 
             try:
                 plan = self.requirement_agent.build_plan(work_item)
+                clarification_status = "not_required"
+                clarification_details = ""
+                if plan.needs_clarification:
+                    clarification = self.approval_service.request_clarification(
+                        work_item_id=work_item.id,
+                        work_item_title=work_item.title,
+                        questions=plan.clarification_questions,
+                    )
+                    if clarification.status != "answered":
+                        clarification_status = clarification.status
+                        clarification_details = "Clarification not completed within required window."
+                        summary = WorkflowRunSummary(
+                            work_item_id=work_item.id,
+                            work_item_title=work_item.title,
+                            overall_status="failed",
+                            repo_workflow_status="failed",
+                            repo_workflow_details="clarification_required",
+                            stage_results=[],
+                            clarification_status=clarification_status,
+                            clarification_details=clarification_details,
+                        )
+                        if self.enable_idempotency:
+                            self.idempotency_store.mark_finished(run_key, "failed")
+                        return summary
+
+                    plan = self.requirement_agent.apply_clarification_answers(plan, clarification.answers)
+                    clarification_status = "answered"
+                    clarification_details = f"clarification_request_id={clarification.request_id}"
+                    comment = self._format_clarification_comment(clarification.request_id, clarification.answers)
+                    self.devops_client.add_work_item_discussion_comment(work_item.id, comment)
+                    if plan.needs_clarification:
+                        clarification_status = "incomplete"
+                        clarification_details = (
+                            f"clarification_request_id={clarification.request_id}; "
+                            "remaining_questions=" + ",".join(plan.clarification_questions)
+                        )
+                        summary = WorkflowRunSummary(
+                            work_item_id=work_item.id,
+                            work_item_title=work_item.title,
+                            overall_status="failed",
+                            repo_workflow_status="failed",
+                            repo_workflow_details="clarification_incomplete",
+                            stage_results=[],
+                            clarification_status=clarification_status,
+                            clarification_details=clarification_details,
+                        )
+                        if self.enable_idempotency:
+                            self.idempotency_store.mark_finished(run_key, "failed")
+                        return summary
+
                 repo_status, repo_details = self.developer_workflow.execute(work_item=work_item, plan=plan)
 
                 stage_results: list[StageResult] = []
@@ -199,6 +249,8 @@ class AgenticOrchestrator:
                     repo_workflow_status=repo_status,
                     repo_workflow_details=repo_details,
                     stage_results=stage_results,
+                    clarification_status=clarification_status,
+                    clarification_details=clarification_details,
                 )
                 self.logger.info(
                     "orchestrator_completed work_item_id=%s status=%s stages=%s repo_status=%s",
@@ -224,3 +276,32 @@ class AgenticOrchestrator:
                     repo_workflow_details=str(exc),
                     stage_results=[],
                 )
+
+    def list_active_work_items(self, limit: int = 50) -> list[dict]:
+        """List active work items for HIL review and bulk clarification checks."""
+        items = self.devops_client.fetch_active_work_items(limit=limit)
+        output: list[dict] = []
+        for item in items:
+            plan = self.requirement_agent.build_plan(item)
+            output.append(
+                {
+                    "id": item.id,
+                    "title": item.title,
+                    "type": item.item_type.value,
+                    "priority": item.priority,
+                    "repo_name": item.repo_name,
+                    "state": item.state,
+                    "needs_clarification": plan.needs_clarification,
+                    "clarification_questions": plan.clarification_questions,
+                }
+            )
+        return output
+
+    @staticmethod
+    def _format_clarification_comment(request_id: str, answers: dict[str, str]) -> str:
+        """Format clarification Q/A for DevOps work-item discussion trail."""
+        lines = [f"[Agent Clarification Record] request_id={request_id}"]
+        for question, answer in answers.items():
+            lines.append(f"Q: {question}")
+            lines.append(f"A: {answer}")
+        return "\\n".join(lines)

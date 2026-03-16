@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from agentic_de_pipeline.config import ApprovalConfig
 from agentic_de_pipeline.logging_utils import get_module_logger
-from agentic_de_pipeline.models import ApprovalRequest, ApprovalStatus
+from agentic_de_pipeline.models import ApprovalRequest, ApprovalStatus, ClarificationRequest
 from agentic_de_pipeline.state_store import JsonStateStore
 
 
@@ -28,7 +28,13 @@ class HumanApprovalService:
         data = self.store.read()
         if "requests" not in data:
             data["requests"] = []
-            self.store.write(data)
+        if "clarifications" not in data:
+            data["clarifications"] = []
+        if "last_answers" not in data:
+            data["last_answers"] = {}
+        if "last_request_id" not in data:
+            data["last_request_id"] = ""
+        self.store.write(data)
 
     def list_pending(self) -> list[dict]:
         """List pending approvals for chatbot/operator UI."""
@@ -47,6 +53,118 @@ class HumanApprovalService:
     def get_stage_guidance(self, stage: str) -> dict:
         """Get actionable checklist for given stage."""
         return self._build_stage_guidance(stage)
+
+    def list_pending_clarifications(self) -> list[dict]:
+        """List pending clarification requests."""
+        data = self.store.read()
+        return [row for row in data.get("clarifications", []) if row.get("status") == "pending"]
+
+    def submit_clarification_answers(
+        self,
+        request_id: str,
+        responder: str,
+        answers: dict[str, str],
+    ) -> bool:
+        """Submit clarification answers from human-in-loop."""
+        data = self.store.read()
+        updated = False
+        for row in data.get("clarifications", []):
+            if row.get("request_id") == request_id:
+                row["answers"] = answers
+                row["status"] = "answered"
+                row["responder"] = responder
+                row["updated_at"] = datetime.now(UTC).isoformat()
+                updated = True
+                break
+        if updated:
+            data["last_answers"] = answers
+            data["last_request_id"] = request_id
+            self.store.write(data)
+            self.logger.info("clarification_answers_saved request_id=%s responder=%s", request_id, responder)
+        return updated
+
+    def request_clarification(
+        self,
+        work_item_id: int,
+        work_item_title: str,
+        questions: list[str],
+    ) -> ClarificationRequest:
+        """Create and resolve clarification request for missing work-item details."""
+        clarification = ClarificationRequest(
+            work_item_id=work_item_id,
+            work_item_title=work_item_title,
+            questions=questions,
+        )
+        data = self.store.read()
+        clarifications = data.setdefault("clarifications", [])
+        clarifications.append(clarification.as_dict())
+        self.store.write(data)
+        self.logger.info("clarification_requested work_item_id=%s request_id=%s", work_item_id, clarification.request_id)
+
+        mode = self.config.mode.lower().strip()
+        if mode == "console":
+            return self._resolve_clarification_console(clarification.request_id)
+        if mode == "api":
+            return self._resolve_clarification_api_wait(clarification.request_id)
+        if mode == "auto":
+            auto_answers = {question: "auto-default" for question in questions}
+            self.submit_clarification_answers(
+                request_id=clarification.request_id,
+                responder="auto-mode",
+                answers=auto_answers,
+            )
+            return self.get_clarification(clarification.request_id)
+        raise ValueError(f"Unsupported clarification mode: {self.config.mode}")
+
+    def get_clarification(self, request_id: str) -> ClarificationRequest:
+        """Fetch one clarification request."""
+        data = self.store.read()
+        for row in data.get("clarifications", []):
+            if row.get("request_id") == request_id:
+                return ClarificationRequest(
+                    work_item_id=int(row["work_item_id"]),
+                    work_item_title=str(row["work_item_title"]),
+                    questions=[str(item) for item in row.get("questions", [])],
+                    status=str(row.get("status", "pending")),
+                    answers={str(key): str(value) for key, value in row.get("answers", {}).items()},
+                    requester=str(row.get("requester", "agent")),
+                    request_id=str(row["request_id"]),
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                    updated_at=datetime.fromisoformat(row["updated_at"]),
+                )
+        raise KeyError(f"Clarification request not found: {request_id}")
+
+    def _resolve_clarification_console(self, request_id: str) -> ClarificationRequest:
+        clarification = self.get_clarification(request_id)
+        answers: dict[str, str] = {}
+        for question in clarification.questions:
+            answer = input(f"\nClarification required: {question}\nAnswer: ").strip()
+            answers[question] = answer
+        self.submit_clarification_answers(
+            request_id=request_id,
+            responder="console-user",
+            answers=answers,
+        )
+        return self.get_clarification(request_id)
+
+    def _resolve_clarification_api_wait(self, request_id: str) -> ClarificationRequest:
+        timeout = self.config.timeout_seconds
+        start = time.monotonic()
+        while time.monotonic() - start < timeout:
+            current = self.get_clarification(request_id)
+            if current.status == "answered":
+                return current
+            time.sleep(5)
+
+        self.submit_clarification_answers(
+            request_id=request_id,
+            responder="system-timeout",
+            answers={},
+        )
+        timed_out = self.get_clarification(request_id)
+        timed_out.status = "timed_out"
+        self.logger.warning("clarification_timeout request_id=%s", request_id)
+        return timed_out
 
     def submit_decision(self, request_id: str, approved: bool, approver: str, comment: str = "") -> bool:
         """Submit approval decision from chatbot/operator."""

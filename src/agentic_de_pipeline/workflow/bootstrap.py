@@ -15,18 +15,28 @@ from agentic_de_pipeline.config import AppConfig
 from agentic_de_pipeline.logging_utils import configure_logging
 from agentic_de_pipeline.services.developer_workflow import DeveloperWorkflowService
 from agentic_de_pipeline.services.mcp_router import MCPRouter
+from agentic_de_pipeline.services.preflight import PreflightValidator
 from agentic_de_pipeline.services.prompt_engine import PromptEngine
-from agentic_de_pipeline.state_store import LearningStore
+from agentic_de_pipeline.state_store import IdempotencyStore, LearningStore
+from agentic_de_pipeline.utils.retry import RetryPolicy
 from agentic_de_pipeline.workflow.orchestrator import AgenticOrchestrator
 
 
 def build_orchestrator(config: AppConfig) -> AgenticOrchestrator:
     """Create a fully wired orchestrator instance from app config."""
     configure_logging(config.logging.log_dir, config.logging.log_level)
+    retry_policy = RetryPolicy(
+        attempts=config.runtime.retry_attempts,
+        initial_delay_seconds=config.runtime.retry_initial_delay_seconds,
+        max_delay_seconds=config.runtime.retry_max_delay_seconds,
+        backoff_multiplier=config.runtime.retry_backoff_multiplier,
+    )
 
     learning_store = LearningStore(config.learning_store_path)
-    prompt_engine = PromptEngine(config.prompts, config.logging.log_dir)
+    idempotency_store = IdempotencyStore(config.runtime.idempotency_store_path)
+    prompt_engine = PromptEngine(config.prompts, config.logging.log_dir, retry_policy=retry_policy)
     mcp_router = MCPRouter(config.mcp, config.logging.log_dir)
+    preflight_validator = PreflightValidator(config, mcp_router, retry_policy)
 
     devops_client = AzureDevOpsClient(config)
     repos_client = AzureReposClient(config)
@@ -40,6 +50,8 @@ def build_orchestrator(config: AppConfig) -> AgenticOrchestrator:
         mcp_router=mcp_router,
         default_repo_name=config.azure_repos.repository_name,
         branch_prefix=config.azure_repos.branch_prefix,
+        retry_policy=retry_policy,
+        fail_on_mcp_error=config.runtime.fail_on_mcp_error,
     )
     implementation_agent = ImplementationAgent(config.logging.log_dir)
     qa_agent = QAAgent(config.logging.log_dir)
@@ -57,7 +69,12 @@ def build_orchestrator(config: AppConfig) -> AgenticOrchestrator:
         promotion_agent=promotion_agent,
         approval_service=approval_service,
         learning_store=learning_store,
+        idempotency_store=idempotency_store,
         developer_workflow=developer_workflow,
+        preflight_validator=preflight_validator,
+        require_preflight_before_run=config.runtime.require_preflight_before_run,
+        enable_idempotency=config.runtime.enable_idempotency,
+        fail_fast=config.runtime.fail_fast,
         max_work_items_per_run=config.runtime.max_work_items_per_run,
         stage_sequence=config.workflow.stage_sequence,
         databricks_apply_in_stages=config.workflow.databricks_apply_in_stages,

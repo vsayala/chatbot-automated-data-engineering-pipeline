@@ -9,6 +9,7 @@ from agentic_de_pipeline.models import RequirementPlan, WorkItem
 from agentic_de_pipeline.services.mcp_router import MCPRouter
 from agentic_de_pipeline.services.prompt_engine import PromptEngine
 from agentic_de_pipeline.state_store import LearningStore
+from agentic_de_pipeline.utils.retry import RetryPolicy
 
 
 class RequirementAgent:
@@ -22,12 +23,16 @@ class RequirementAgent:
         mcp_router: MCPRouter,
         default_repo_name: str,
         branch_prefix: str,
+        retry_policy: RetryPolicy,
+        fail_on_mcp_error: bool,
     ) -> None:
         self.learning_store = learning_store
         self.prompt_engine = prompt_engine
         self.mcp_router = mcp_router
         self.default_repo_name = default_repo_name
         self.branch_prefix = branch_prefix
+        self.retry_policy = retry_policy
+        self.fail_on_mcp_error = fail_on_mcp_error
         self.logger = get_module_logger(
             module_name="agentic_de_pipeline.requirement_agent",
             log_dir=log_dir,
@@ -60,6 +65,33 @@ class RequirementAgent:
         ]
 
         mcp_snapshot = self.mcp_router.status_snapshot()
+        mcp_enrichment: dict = {}
+        if self.mcp_router.is_enabled():
+            try:
+                preferred_server = (
+                    "azure_devops_mcp"
+                    if "azure_devops_mcp" in self.mcp_router.config.servers
+                    else next(iter(self.mcp_router.config.servers), "")
+                )
+                if not preferred_server:
+                    raise RuntimeError("MCP enabled but no servers are configured.")
+                mcp_enrichment = self.mcp_router.invoke_action(
+                    server_name=preferred_server,
+                    action="enrich_work_item",
+                    payload={
+                        "id": work_item.id,
+                        "title": work_item.title,
+                        "description": work_item.description,
+                        "acceptance_criteria": work_item.acceptance_criteria,
+                    },
+                    retry_policy=self.retry_policy,
+                )
+                source_types = mcp_enrichment.get("source_types", source_types)
+                ingestion_mode = mcp_enrichment.get("ingestion_mode", ingestion_mode)
+            except Exception as exc:  # pylint: disable=broad-except
+                self.logger.warning("mcp_enrichment_failed work_item_id=%s error=%s", work_item.id, exc)
+                if self.fail_on_mcp_error:
+                    raise
         summary_prompt = self.prompt_engine.render(
             "requirement_summary",
             {
@@ -69,6 +101,7 @@ class RequirementAgent:
                 "target_repo": target_repo,
                 "priority": work_item.priority,
                 "mcp_status": mcp_snapshot,
+                "mcp_enrichment": mcp_enrichment,
                 "fallback": f"Implement {work_item.title}",
             },
         )

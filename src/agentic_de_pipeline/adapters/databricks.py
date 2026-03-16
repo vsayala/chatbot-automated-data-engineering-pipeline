@@ -8,6 +8,7 @@ from pathlib import Path
 from agentic_de_pipeline.config import AppConfig
 from agentic_de_pipeline.logging_utils import get_module_logger
 from agentic_de_pipeline.models import RequirementPlan, StageResult
+from agentic_de_pipeline.utils.retry import RetryPolicy, run_with_retry
 from agentic_de_pipeline.utils.secrets import resolve_secret
 from agentic_de_pipeline.utils.timing import timed_operation
 
@@ -21,6 +22,12 @@ class DatabricksWorkspaceClient:
             module_name="agentic_de_pipeline.databricks",
             log_dir=config.logging.log_dir,
             file_name="databricks.log",
+        )
+        self.retry_policy = RetryPolicy(
+            attempts=config.runtime.retry_attempts,
+            initial_delay_seconds=config.runtime.retry_initial_delay_seconds,
+            max_delay_seconds=config.runtime.retry_max_delay_seconds,
+            backoff_multiplier=config.runtime.retry_backoff_multiplier,
         )
 
     def apply_plan(self, environment: str, plan: RequirementPlan) -> StageResult:
@@ -111,8 +118,17 @@ class DatabricksWorkspaceClient:
             headers=headers,
             method="POST",
         )
-        with urllib.request.urlopen(create_req, timeout=30) as resp:  # nosec B310
-            create_data = json.loads(resp.read().decode("utf-8"))
+
+        def _create_job() -> dict:
+            with urllib.request.urlopen(create_req, timeout=30) as resp:  # nosec B310
+                return json.loads(resp.read().decode("utf-8"))
+
+        create_data = run_with_retry(
+            operation_name=f"databricks_create_job_{environment}",
+            action=_create_job,
+            policy=self.retry_policy,
+            logger=self.logger,
+        )
 
         job_id = create_data["job_id"]
         run_url = f"{workspace_url}/api/2.1/jobs/run-now"
@@ -123,8 +139,17 @@ class DatabricksWorkspaceClient:
             headers=headers,
             method="POST",
         )
-        with urllib.request.urlopen(run_req, timeout=30) as resp:  # nosec B310
-            run_data = json.loads(resp.read().decode("utf-8"))
+
+        def _run_job() -> dict:
+            with urllib.request.urlopen(run_req, timeout=30) as resp:  # nosec B310
+                return json.loads(resp.read().decode("utf-8"))
+
+        run_data = run_with_retry(
+            operation_name=f"databricks_run_job_{environment}",
+            action=_run_job,
+            policy=self.retry_policy,
+            logger=self.logger,
+        )
 
         run_id = run_data["run_id"]
         self.logger.info(

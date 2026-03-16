@@ -34,6 +34,52 @@ def create_app(config_path: str) -> FastAPI:
         pending = orchestrator.approval_service.list_pending()
         return {"pending": pending}
 
+    @app.get("/approvals/pending-with-suggestions")
+    def list_pending_with_suggestions() -> dict[str, list[dict]]:
+        pending = orchestrator.approval_service.list_pending_with_guidance()
+        prompt_engine = orchestrator.requirement_agent.prompt_engine
+        enriched: list[dict] = []
+        for row in pending:
+            guidance = row.get("guidance", {})
+            suggestion_prompt = prompt_engine.render(
+                "approval_suggestion",
+                {
+                    "stage": row.get("stage", ""),
+                    "summary": row.get("summary", ""),
+                    "checklist": guidance.get("checklist", []),
+                    "risk_level": guidance.get("risk_level", "medium"),
+                    "fallback": (
+                        f"Stage {row.get('stage')} requires checklist validation before approval. "
+                        "Approve only when all checks pass."
+                    ),
+                },
+            )
+            suggestion_text = prompt_engine.generate_text(suggestion_prompt)
+            enriched.append({**row, "guidance": guidance, "suggestion_text": suggestion_text})
+        return {"pending": enriched}
+
+    @app.get("/approvals/{request_id}/suggestion")
+    def get_approval_suggestion(request_id: str) -> dict:
+        try:
+            row = orchestrator.approval_service.get_request_row(request_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        guidance = orchestrator.approval_service.get_stage_guidance(str(row.get("stage", "")))
+        prompt_engine = orchestrator.requirement_agent.prompt_engine
+        suggestion_prompt = prompt_engine.render(
+            "approval_suggestion",
+            {
+                "stage": row.get("stage", ""),
+                "summary": row.get("summary", ""),
+                "checklist": guidance.get("checklist", []),
+                "risk_level": guidance.get("risk_level", "medium"),
+                "fallback": f"Review checklist for stage {row.get('stage')}.",
+            },
+        )
+        suggestion_text = prompt_engine.generate_text(suggestion_prompt)
+        return {"request_id": request_id, "guidance": guidance, "suggestion_text": suggestion_text}
+
     @app.post("/approvals/{request_id}/decision")
     def submit_approval_decision(request_id: str, payload: ApprovalDecisionPayload) -> dict[str, str]:
         updated = orchestrator.approval_service.submit_decision(
@@ -48,9 +94,16 @@ def create_app(config_path: str) -> FastAPI:
 
     @app.post("/workflow/process-next")
     def process_next_work_item() -> dict:
+        if config.runtime.require_preflight_before_run:
+            try:
+                checks = orchestrator.preflight_validator.validate_or_raise()
+            except Exception as exc:  # pylint: disable=broad-except
+                raise HTTPException(status_code=503, detail=f"Preflight failed: {exc}") from exc
+        else:
+            checks = {"preflight": "skipped"}
         summary = orchestrator.run_once()
         if not summary:
-            return {"status": "no_work_items"}
+            return {"status": "no_work_items", "preflight": checks}
 
         # Convert dataclass output for JSON response.
         response = asdict(summary)
@@ -58,6 +111,12 @@ def create_app(config_path: str) -> FastAPI:
         for stage in response["stage_results"]:
             stage["started_at"] = stage["started_at"].isoformat()
             stage["finished_at"] = stage["finished_at"].isoformat()
+        response["preflight"] = checks
         return response
+
+    @app.get("/preflight/run")
+    def run_preflight() -> dict[str, dict[str, str]]:
+        checks = orchestrator.preflight_validator.run_checks()
+        return {"checks": checks}
 
     return app

@@ -9,3 +9,14 @@ requirement_summary: |
 
   Generate a concise execution summary that covers repository impact, ingestion intent,
   and release-safety expectations for human-in-the-loop approvals.
+
+approval_suggestion: |
+  You are assisting a human approver for deployment stage {stage}.
+  Stage risk: {risk_level}
+  Deployment summary: {summary}
+  Required checklist: {checklist}
+
+  Provide a concise recommendation:
+  - whether to approve or hold
+  - top 2 risks
+  - top 2 validation steps

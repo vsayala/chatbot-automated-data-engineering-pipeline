@@ -14,6 +14,9 @@ Deploy this agentic CI/CD system in enterprise environments using:
 - Developer checks before CI/CD
 - PR creation hooks for QE promotion workflows
 - Stage-by-stage approvals and test controls
+- Preflight connectivity validation and fail-fast startup
+- Retry policy for transient external API failures
+- Idempotent work-item processing to avoid duplicate deployments
 
 ## Config strategy
 Use `config/config_prod.yaml` and provide:
@@ -34,6 +37,8 @@ If Databricks changes are done in DEV and Azure Pipelines handles promotions, ke
 - `workflow.stage_sequence: ["dev","qe","stg","prod"]`
 - `workflow.databricks_apply_in_stages: ["dev"]`
 - `workflow.hil_approval_stages: ["qe","stg","prod"]`
+- `runtime.require_preflight_before_run: true`
+- `runtime.enable_idempotency: true`
 
 ### Token handling
 Supported in code:
@@ -73,6 +78,11 @@ Cross-cutting:
 - [ ] Environment-specific guardrails and release policies
 - [ ] Dependency and code security scans in CI
 - [ ] Immutable audit evidence for approvals and deployments
+
+## Chatbot / HIL enhancements now available
+- `GET /approvals/pending-with-suggestions`
+- `GET /approvals/{request_id}/suggestion`
+- `GET /preflight/run`
 
 ## Example secure deployment notes (commented for activation)
 ```yaml

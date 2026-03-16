@@ -14,7 +14,8 @@ from agentic_de_pipeline.agents.requirement_agent import RequirementAgent
 from agentic_de_pipeline.models import ApprovalRequest, ApprovalStatus
 from agentic_de_pipeline.services.mcp_router import MCPRouter
 from agentic_de_pipeline.services.prompt_engine import PromptEngine
-from agentic_de_pipeline.state_store import LearningStore
+from agentic_de_pipeline.state_store import IdempotencyStore, LearningStore
+from agentic_de_pipeline.utils.retry import RetryPolicy
 from agentic_de_pipeline.workflow.orchestrator import AgenticOrchestrator
 
 
@@ -53,6 +54,14 @@ class DeveloperWorkflowStub:
         return "succeeded", f"branch={plan.branch_name}; tests=passed; pr=dry-run"
 
 
+class PreflightStub:
+    """Return successful preflight checks without external calls."""
+
+    @staticmethod
+    def validate_or_raise():  # noqa: ANN001
+        return {"status": "ok"}
+
+
 def test_orchestrator_stops_on_qe_rejection(test_config) -> None:
     """Workflow must stop if a manual approval is rejected."""
     learning_store = LearningStore(test_config.learning_store_path)
@@ -63,7 +72,10 @@ def test_orchestrator_stops_on_qe_rejection(test_config) -> None:
         mcp_router=MCPRouter(test_config.mcp, test_config.logging.log_dir),
         default_repo_name=test_config.azure_repos.repository_name,
         branch_prefix=test_config.azure_repos.branch_prefix,
+        retry_policy=RetryPolicy(attempts=1),
+        fail_on_mcp_error=False,
     )
+    idempotency_store = IdempotencyStore(test_config.runtime.idempotency_store_path)
 
     orchestrator = AgenticOrchestrator(
         devops_client=AzureDevOpsClient(test_config),
@@ -75,7 +87,12 @@ def test_orchestrator_stops_on_qe_rejection(test_config) -> None:
         promotion_agent=PromotionAgent(test_config.logging.log_dir),
         approval_service=RejectingApprovalService(),
         learning_store=learning_store,
+        idempotency_store=idempotency_store,
         developer_workflow=DeveloperWorkflowStub(),
+        preflight_validator=PreflightStub(),
+        require_preflight_before_run=False,
+        enable_idempotency=True,
+        fail_fast=True,
         max_work_items_per_run=1,
         stage_sequence=["dev", "qe", "stg", "prod"],
         databricks_apply_in_stages=["dev"],

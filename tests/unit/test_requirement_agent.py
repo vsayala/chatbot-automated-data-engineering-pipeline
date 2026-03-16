@@ -9,6 +9,7 @@ from agentic_de_pipeline.models import LearningRecord, WorkItem, WorkItemType
 from agentic_de_pipeline.services.mcp_router import MCPRouter
 from agentic_de_pipeline.services.prompt_engine import PromptEngine
 from agentic_de_pipeline.state_store import LearningStore
+from agentic_de_pipeline.utils.retry import RetryPolicy
 
 
 def test_requirement_agent_extracts_core_fields(tmp_path) -> None:
@@ -46,6 +47,8 @@ def test_requirement_agent_extracts_core_fields(tmp_path) -> None:
         mcp_router=MCPRouter(MCPConfigStub(), str(tmp_path / "logs")),
         default_repo_name="default-repo",
         branch_prefix="feature/pbi-",
+        retry_policy=RetryPolicy(attempts=1),
+        fail_on_mcp_error=False,
     )
 
     work_item = WorkItem(

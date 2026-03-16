@@ -10,14 +10,16 @@ import yaml
 
 from agentic_de_pipeline.config import PromptConfig
 from agentic_de_pipeline.logging_utils import get_module_logger
+from agentic_de_pipeline.utils.retry import RetryPolicy, run_with_retry
 from agentic_de_pipeline.utils.secrets import resolve_secret
 
 
 class PromptEngine:
     """Loads prompt templates and optionally calls hosted LLM endpoints."""
 
-    def __init__(self, config: PromptConfig, log_dir: str) -> None:
+    def __init__(self, config: PromptConfig, log_dir: str, retry_policy: RetryPolicy | None = None) -> None:
         self.config = config
+        self.retry_policy = retry_policy or RetryPolicy(attempts=2, initial_delay_seconds=0.5, max_delay_seconds=2.0)
         self.logger = get_module_logger(
             module_name="agentic_de_pipeline.prompt_engine",
             log_dir=log_dir,
@@ -78,8 +80,16 @@ class PromptEngine:
             method="POST",
         )
 
-        with urllib.request.urlopen(req, timeout=30) as response:  # nosec B310
-            body = json.loads(response.read().decode("utf-8"))
+        def _invoke() -> dict:
+            with urllib.request.urlopen(req, timeout=30) as response:  # nosec B310
+                return json.loads(response.read().decode("utf-8"))
+
+        body = run_with_retry(
+            operation_name="prompt_engine_llm_call",
+            action=_invoke,
+            policy=self.retry_policy,
+            logger=self.logger,
+        )
 
         choices = body.get("choices", [])
         if not choices:

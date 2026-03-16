@@ -10,6 +10,7 @@ from pathlib import Path
 from agentic_de_pipeline.config import AppConfig
 from agentic_de_pipeline.logging_utils import get_module_logger
 from agentic_de_pipeline.models import WorkItem
+from agentic_de_pipeline.utils.retry import RetryPolicy, run_with_retry
 from agentic_de_pipeline.utils.secrets import resolve_secret
 from agentic_de_pipeline.utils.timing import timed_operation
 
@@ -26,6 +27,12 @@ class AzureReposClient:
             module_name="agentic_de_pipeline.azure_repos",
             log_dir=config.logging.log_dir,
             file_name="azure_repos.log",
+        )
+        self.retry_policy = RetryPolicy(
+            attempts=config.runtime.retry_attempts,
+            initial_delay_seconds=config.runtime.retry_initial_delay_seconds,
+            max_delay_seconds=config.runtime.retry_max_delay_seconds,
+            backoff_multiplier=config.runtime.retry_backoff_multiplier,
         )
 
     def prepare_branch(self, work_item: WorkItem) -> str:
@@ -130,8 +137,17 @@ class AzureReposClient:
             headers=headers,
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=30) as response:  # nosec B310
-            body = json.loads(response.read().decode("utf-8"))
+
+        def _create_pr() -> dict:
+            with urllib.request.urlopen(request, timeout=30) as response:  # nosec B310
+                return json.loads(response.read().decode("utf-8"))
+
+        body = run_with_retry(
+            operation_name=f"azure_repos_create_pr_{work_item.id}",
+            action=_create_pr,
+            policy=self.retry_policy,
+            logger=self.logger,
+        )
 
         pr_url = str(body.get("url", ""))
         self.logger.info("azure_repos_pr_created url=%s", pr_url)

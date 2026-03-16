@@ -16,7 +16,9 @@ This project implements a local-first, human-in-the-loop agentic workflow for da
 5. Runs stage flow Dev -> QE -> STG -> PROD with mandatory approvals.
 6. Keeps learning memory for future ranking/context.
 7. Uses prompt templates and optional hosted LLM endpoint.
-8. Supports MCP server configuration snapshot for tool integrations.
+8. Supports MCP server action routing for external tool integrations.
+9. Runs preflight connectivity checks before execution.
+10. Uses retries + idempotency to reduce transient failures and duplicate processing.
 
 ## Architecture (Local Runtime)
 ```text
@@ -76,22 +78,32 @@ Each integration accepts either:
    python3 main.py --config config/config_local.yaml run-once
    ```
 
-4. Start chatbot approval API:
+4. Run preflight checks only:
+   ```bash
+   python3 main.py --config config/config_local.yaml preflight
+   ```
+
+5. Start chatbot approval API:
    ```bash
    python3 main.py --config config/config_local.yaml serve-chat --host 0.0.0.0 --port 8000
    ```
 
-5. Trigger processing via API:
+6. Trigger processing via API:
    ```bash
    curl -X POST http://localhost:8000/workflow/process-next
    ```
 
-6. View pending approvals:
+7. View pending approvals:
    ```bash
    curl http://localhost:8000/approvals/pending
    ```
 
-7. Submit decision:
+8. View pending approvals with actionable suggestions:
+   ```bash
+   curl http://localhost:8000/approvals/pending-with-suggestions
+   ```
+
+9. Submit decision:
    ```bash
    curl -X POST "http://localhost:8000/approvals/<request_id>/decision" \
      -H "Content-Type: application/json" \
@@ -103,6 +115,9 @@ Each integration accepts either:
 - `runtime.enable_repo_automation: true` => enable repository lifecycle automation.
 - `runtime.run_basic_tests: true` + `runtime.basic_test_command` => local validation command.
 - `workflow.*` => control stage order, where Databricks is executed, and where HIL approval is required.
+- `runtime.require_preflight_before_run: true` => fail fast when service connectivity is broken.
+- `runtime.enable_idempotency: true` => prevent duplicate work-item processing.
+- `runtime.retry_*` => retry policy for transient network failures.
 
 ## Logging
 - Master log: `logs/project_master.log`

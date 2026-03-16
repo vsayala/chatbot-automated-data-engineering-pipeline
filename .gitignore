@@ -7,3 +7,4 @@ jobs/*.yaml
 state/*.json
 !state/approvals_state.json
 !state/learning_memory.json
+!state/idempotency_state.json

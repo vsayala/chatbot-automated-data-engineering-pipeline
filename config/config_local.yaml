@@ -63,6 +63,7 @@ mcp:
   enabled: false
   servers: {}
   server_tokens: {}
+  request_timeout_seconds: 30
 
 workflow:
   stage_sequence: ["dev", "qe", "stg", "prod"]
@@ -76,5 +77,14 @@ runtime:
   run_basic_tests: true
   basic_test_command: "python3 -m pytest -q tests/unit"
   auto_create_pr: true
+  require_preflight_before_run: true
+  fail_fast: true
+  enable_idempotency: true
+  idempotency_store_path: "state/idempotency_state.json"
+  retry_attempts: 3
+  retry_initial_delay_seconds: 1.0
+  retry_max_delay_seconds: 8.0
+  retry_backoff_multiplier: 2.0
+  fail_on_mcp_error: false
 
 learning_store_path: "state/learning_memory.json"

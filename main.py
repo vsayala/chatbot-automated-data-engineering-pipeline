@@ -52,6 +52,14 @@ def serve_chat(config_path: str, host: str, port: int) -> None:
     uvicorn.run(app, host=host, port=port)
 
 
+def run_preflight(config_path: str) -> None:
+    """Run preflight validation checks and print report."""
+    config = load_config(config_path)
+    orchestrator = build_orchestrator(config)
+    checks = orchestrator.preflight_validator.validate_or_raise()
+    print(json.dumps({"checks": checks}, indent=2))
+
+
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(description="Agentic data engineering CI/CD orchestrator")
@@ -64,6 +72,7 @@ def parse_args() -> argparse.Namespace:
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("run-once", help="Process one work item")
     subcommands.add_parser("run-loop", help="Continuously process work items")
+    subcommands.add_parser("preflight", help="Run service connectivity checks")
 
     serve_parser = subcommands.add_parser("serve-chat", help="Start chatbot API server")
     serve_parser.add_argument("--host", default="0.0.0.0")
@@ -79,6 +88,8 @@ def main() -> None:
         run_once(args.config)
     elif args.command == "run-loop":
         run_loop(args.config)
+    elif args.command == "preflight":
+        run_preflight(args.config)
     elif args.command == "serve-chat":
         serve_chat(args.config, args.host, args.port)
 

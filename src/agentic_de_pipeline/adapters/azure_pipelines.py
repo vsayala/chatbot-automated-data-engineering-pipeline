@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from agentic_de_pipeline.config import AppConfig
 from agentic_de_pipeline.logging_utils import get_module_logger
 from agentic_de_pipeline.models import PipelineRunResult, RequirementPlan
+from agentic_de_pipeline.utils.retry import RetryPolicy, run_with_retry
 from agentic_de_pipeline.utils.secrets import resolve_secret
 from agentic_de_pipeline.utils.timing import timed_operation
 
@@ -22,6 +23,12 @@ class AzurePipelinesClient:
             module_name="agentic_de_pipeline.azure_pipelines",
             log_dir=config.logging.log_dir,
             file_name="azure_pipelines.log",
+        )
+        self.retry_policy = RetryPolicy(
+            attempts=config.runtime.retry_attempts,
+            initial_delay_seconds=config.runtime.retry_initial_delay_seconds,
+            max_delay_seconds=config.runtime.retry_max_delay_seconds,
+            backoff_multiplier=config.runtime.retry_backoff_multiplier,
         )
 
     def run_cicd(self, environment: str, plan: RequirementPlan) -> PipelineRunResult:
@@ -80,8 +87,17 @@ class AzurePipelinesClient:
         # Resolve pipeline id from name.
         list_url = f"{org_url}/{project}/_apis/pipelines?api-version=7.0"
         list_req = urllib.request.Request(list_url, headers=headers, method="GET")
-        with urllib.request.urlopen(list_req, timeout=30) as resp:  # nosec B310
-            pipelines = json.loads(resp.read().decode("utf-8"))
+
+        def _fetch_pipelines() -> dict:
+            with urllib.request.urlopen(list_req, timeout=30) as resp:  # nosec B310
+                return json.loads(resp.read().decode("utf-8"))
+
+        pipelines = run_with_retry(
+            operation_name="azure_pipelines_list",
+            action=_fetch_pipelines,
+            policy=self.retry_policy,
+            logger=self.logger,
+        )
 
         pipeline_id = None
         for row in pipelines.get("value", []):
@@ -107,8 +123,17 @@ class AzurePipelinesClient:
             headers=headers,
             method="POST",
         )
-        with urllib.request.urlopen(trigger_req, timeout=30) as resp:  # nosec B310
-            run_data = json.loads(resp.read().decode("utf-8"))
+
+        def _trigger_pipeline() -> dict:
+            with urllib.request.urlopen(trigger_req, timeout=30) as resp:  # nosec B310
+                return json.loads(resp.read().decode("utf-8"))
+
+        run_data = run_with_retry(
+            operation_name=f"azure_pipeline_trigger_{environment}",
+            action=_trigger_pipeline,
+            policy=self.retry_policy,
+            logger=self.logger,
+        )
 
         run_id = str(run_data["id"])
         run_url = f"{org_url}/{project}/_apis/pipelines/{pipeline_id}/runs/{run_id}?api-version=7.0"
@@ -116,8 +141,17 @@ class AzurePipelinesClient:
         status = "inProgress"
         while status.lower() in {"inprogress", "notstarted"}:
             poll_req = urllib.request.Request(run_url, headers=headers, method="GET")
-            with urllib.request.urlopen(poll_req, timeout=30) as resp:  # nosec B310
-                current = json.loads(resp.read().decode("utf-8"))
+
+            def _poll_status() -> dict:
+                with urllib.request.urlopen(poll_req, timeout=30) as resp:  # nosec B310
+                    return json.loads(resp.read().decode("utf-8"))
+
+            current = run_with_retry(
+                operation_name=f"azure_pipeline_poll_{environment}",
+                action=_poll_status,
+                policy=self.retry_policy,
+                logger=self.logger,
+            )
             status = current.get("result") or current.get("state", "unknown")
             if status.lower() in {"inprogress", "notstarted"}:
                 time.sleep(10)

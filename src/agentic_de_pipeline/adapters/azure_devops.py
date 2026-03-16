@@ -8,6 +8,7 @@ from pathlib import Path
 from agentic_de_pipeline.config import AppConfig
 from agentic_de_pipeline.logging_utils import get_module_logger
 from agentic_de_pipeline.models import WorkItem, WorkItemType
+from agentic_de_pipeline.utils.retry import RetryPolicy, run_with_retry
 from agentic_de_pipeline.utils.secrets import resolve_secret
 from agentic_de_pipeline.utils.timing import timed_operation
 
@@ -21,6 +22,12 @@ class AzureDevOpsClient:
             module_name="agentic_de_pipeline.azure_devops",
             log_dir=config.logging.log_dir,
             file_name="azure_devops.log",
+        )
+        self.retry_policy = RetryPolicy(
+            attempts=config.runtime.retry_attempts,
+            initial_delay_seconds=config.runtime.retry_initial_delay_seconds,
+            max_delay_seconds=config.runtime.retry_max_delay_seconds,
+            backoff_multiplier=config.runtime.retry_backoff_multiplier,
         )
 
     def fetch_open_work_items(self, limit: int = 5) -> list[WorkItem]:
@@ -86,8 +93,17 @@ class AzureDevOpsClient:
 
         wiql_url = f"{org_url}/{project}/_apis/wit/wiql?api-version=7.0"
         req = urllib.request.Request(wiql_url, data=wiql_payload, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310
-            wiql_result = json.loads(resp.read().decode("utf-8"))
+
+        def _fetch_wiql() -> dict:
+            with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310
+                return json.loads(resp.read().decode("utf-8"))
+
+        wiql_result = run_with_retry(
+            operation_name="azure_devops_wiql",
+            action=_fetch_wiql,
+            policy=self.retry_policy,
+            logger=self.logger,
+        )
 
         ids = [str(item["id"]) for item in wiql_result.get("workItems", [])[:limit]]
         if not ids:
@@ -101,8 +117,17 @@ class AzureDevOpsClient:
             "&api-version=7.0"
         )
         detail_req = urllib.request.Request(detail_url, headers=headers, method="GET")
-        with urllib.request.urlopen(detail_req, timeout=30) as resp:  # nosec B310
-            detail_result = json.loads(resp.read().decode("utf-8"))
+
+        def _fetch_detail() -> dict:
+            with urllib.request.urlopen(detail_req, timeout=30) as resp:  # nosec B310
+                return json.loads(resp.read().decode("utf-8"))
+
+        detail_result = run_with_retry(
+            operation_name="azure_devops_workitem_detail",
+            action=_fetch_detail,
+            policy=self.retry_policy,
+            logger=self.logger,
+        )
 
         output: list[WorkItem] = []
         for row in detail_result.get("value", []):

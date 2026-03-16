@@ -1,8 +1,9 @@
-"""Persistent state store utilities for approvals and learning."""
+"""Persistent state store utilities for approvals, idempotency, and learning."""
 
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -68,3 +69,41 @@ class LearningStore:
                 scores[source_type] = scores.get(source_type, 0) + 1
         ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
         return [name for name, _ in ranked]
+
+
+class IdempotencyStore:
+    """Track processed work items to avoid duplicate orchestration runs."""
+
+    def __init__(self, path: str) -> None:
+        self.state_store = JsonStateStore(path)
+        initial = self.state_store.read()
+        if "runs" not in initial:
+            initial["runs"] = {}
+            self.state_store.write(initial)
+
+    @staticmethod
+    def build_key(work_item_id: int, title: str, description: str) -> str:
+        """Build stable key from work item attributes."""
+        fingerprint = f"{work_item_id}|{title.strip()}|{description.strip()}"
+        digest = sha256(fingerprint.encode("utf-8")).hexdigest()
+        return f"{work_item_id}:{digest[:16]}"
+
+    def has_successful_run(self, run_key: str) -> bool:
+        """Return True when key already completed successfully."""
+        data = self.state_store.read()
+        run = data.get("runs", {}).get(run_key, {})
+        return run.get("status") == "succeeded"
+
+    def mark_started(self, run_key: str) -> None:
+        """Record run start status."""
+        data = self.state_store.read()
+        runs = data.setdefault("runs", {})
+        runs[run_key] = {"status": "in_progress"}
+        self.state_store.write(data)
+
+    def mark_finished(self, run_key: str, status: str) -> None:
+        """Record final run status."""
+        data = self.state_store.read()
+        runs = data.setdefault("runs", {})
+        runs[run_key] = {"status": status}
+        self.state_store.write(data)

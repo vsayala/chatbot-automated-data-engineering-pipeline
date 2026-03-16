@@ -35,6 +35,19 @@ class HumanApprovalService:
         data = self.store.read()
         return [row for row in data.get("requests", []) if row.get("status") == ApprovalStatus.PENDING.value]
 
+    def list_pending_with_guidance(self) -> list[dict]:
+        """List pending approvals enriched with stage-aware suggestions."""
+        pending = self.list_pending()
+        output: list[dict] = []
+        for row in pending:
+            guidance = self.get_stage_guidance(str(row.get("stage", "")))
+            output.append({**row, "guidance": guidance})
+        return output
+
+    def get_stage_guidance(self, stage: str) -> dict:
+        """Get actionable checklist for given stage."""
+        return self._build_stage_guidance(stage)
+
     def submit_decision(self, request_id: str, approved: bool, approver: str, comment: str = "") -> bool:
         """Submit approval decision from chatbot/operator."""
         data = self.store.read()
@@ -103,6 +116,14 @@ class HumanApprovalService:
                 )
         raise KeyError(f"Approval request not found: {request_id}")
 
+    def get_request_row(self, request_id: str) -> dict:
+        """Fetch raw request payload for API enrichment use-cases."""
+        data = self.store.read()
+        for row in data.get("requests", []):
+            if row.get("request_id") == request_id:
+                return row
+        raise KeyError(f"Approval request not found: {request_id}")
+
     def _resolve_console(self, request_id: str) -> ApprovalRequest:
         prompt = (
             "\nApproval required. Type 'approve' to continue, 'reject' to stop: "
@@ -136,3 +157,28 @@ class HumanApprovalService:
         timed_out.status = ApprovalStatus.TIMED_OUT
         self.logger.warning("approval_timeout request_id=%s", request_id)
         return timed_out
+
+    @staticmethod
+    def _build_stage_guidance(stage: str) -> dict:
+        """Build deterministic approval checklist by stage."""
+        checklists = {
+            "qe": [
+                "Validate schema compatibility and data quality checks.",
+                "Confirm unit and integration tests passed in pipeline artifacts.",
+                "Review rollback plan and deployment notes.",
+            ],
+            "stg": [
+                "Review performance and scalability metrics.",
+                "Confirm RFC/CAB prerequisites are complete.",
+                "Validate production-like data contract behavior.",
+            ],
+            "prod": [
+                "Confirm final change window approval.",
+                "Validate monitoring alerts and on-call readiness.",
+                "Verify backup and rollback controls.",
+            ],
+        }
+        stage_key = stage.lower().strip()
+        guidance = checklists.get(stage_key, ["Review stage deployment evidence before approving."])
+        priority = "high" if stage_key in {"prod"} else "medium"
+        return {"recommended_action": "approve_if_all_checks_pass", "risk_level": priority, "checklist": guidance}

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 
 class AzureDevOpsConfig(BaseModel):
@@ -115,6 +115,7 @@ class MCPConfig(BaseModel):
     enabled: bool = False
     servers: dict[str, str] = Field(default_factory=dict)
     server_tokens: dict[str, str] = Field(default_factory=dict)
+    request_timeout_seconds: int = 30
 
 
 class RuntimeConfig(BaseModel):
@@ -126,6 +127,15 @@ class RuntimeConfig(BaseModel):
     run_basic_tests: bool = True
     basic_test_command: str = "python3 -m pytest -q tests/unit"
     auto_create_pr: bool = True
+    require_preflight_before_run: bool = True
+    fail_fast: bool = True
+    enable_idempotency: bool = True
+    idempotency_store_path: str = "state/idempotency_state.json"
+    retry_attempts: int = 3
+    retry_initial_delay_seconds: float = 1.0
+    retry_max_delay_seconds: float = 8.0
+    retry_backoff_multiplier: float = 2.0
+    fail_on_mcp_error: bool = False
 
 
 class AppConfig(BaseModel):
@@ -144,6 +154,34 @@ class AppConfig(BaseModel):
     workflow: WorkflowConfig = Field(default_factory=WorkflowConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     learning_store_path: str = "state/learning_memory.json"
+
+    @model_validator(mode="after")
+    def validate_cross_field_settings(self) -> "AppConfig":
+        """Validate cross-field settings for safer runtime behavior."""
+        stage_set = set(self.workflow.stage_sequence)
+        missing_databricks_stages = set(self.workflow.databricks_apply_in_stages) - stage_set
+        if missing_databricks_stages:
+            raise ValueError(
+                "workflow.databricks_apply_in_stages must be subset of workflow.stage_sequence. "
+                f"Invalid stages: {sorted(missing_databricks_stages)}"
+            )
+
+        missing_hil_stages = set(self.workflow.hil_approval_stages) - stage_set
+        if missing_hil_stages:
+            raise ValueError(
+                "workflow.hil_approval_stages must be subset of workflow.stage_sequence. "
+                f"Invalid stages: {sorted(missing_hil_stages)}"
+            )
+
+        if self.runtime.retry_attempts < 1:
+            raise ValueError("runtime.retry_attempts must be at least 1.")
+        if self.runtime.retry_initial_delay_seconds <= 0:
+            raise ValueError("runtime.retry_initial_delay_seconds must be greater than 0.")
+        if self.runtime.retry_max_delay_seconds <= 0:
+            raise ValueError("runtime.retry_max_delay_seconds must be greater than 0.")
+        if self.runtime.retry_backoff_multiplier < 1:
+            raise ValueError("runtime.retry_backoff_multiplier must be >= 1.")
+        return self
 
 
 def load_config(config_path: str | Path) -> AppConfig:

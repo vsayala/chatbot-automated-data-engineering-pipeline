@@ -12,6 +12,8 @@ from agentic_de_pipeline.agents.promotion_agent import PromotionAgent
 from agentic_de_pipeline.agents.qa_agent import QAAgent
 from agentic_de_pipeline.agents.requirement_agent import RequirementAgent
 from agentic_de_pipeline.models import ApprovalRequest, ApprovalStatus
+from agentic_de_pipeline.services.mcp_router import MCPRouter
+from agentic_de_pipeline.services.prompt_engine import PromptEngine
 from agentic_de_pipeline.state_store import LearningStore
 from agentic_de_pipeline.workflow.orchestrator import AgenticOrchestrator
 
@@ -43,25 +45,45 @@ class RejectingApprovalService:
         )
 
 
+class DeveloperWorkflowStub:
+    """Simulate successful branch/test/PR workflow."""
+
+    @staticmethod
+    def execute(work_item, plan):  # noqa: ANN001
+        return "succeeded", f"branch={plan.branch_name}; tests=passed; pr=dry-run"
+
+
 def test_orchestrator_stops_on_qe_rejection(test_config) -> None:
     """Workflow must stop if a manual approval is rejected."""
     learning_store = LearningStore(test_config.learning_store_path)
+    requirement_agent = RequirementAgent(
+        log_dir=test_config.logging.log_dir,
+        learning_store=learning_store,
+        prompt_engine=PromptEngine(test_config.prompts, test_config.logging.log_dir),
+        mcp_router=MCPRouter(test_config.mcp, test_config.logging.log_dir),
+        default_repo_name=test_config.azure_repos.repository_name,
+        branch_prefix=test_config.azure_repos.branch_prefix,
+    )
+
     orchestrator = AgenticOrchestrator(
         devops_client=AzureDevOpsClient(test_config),
         pipelines_client=AzurePipelinesClient(test_config),
         databricks_client=DatabricksWorkspaceClient(test_config),
-        requirement_agent=RequirementAgent(test_config.logging.log_dir, learning_store),
+        requirement_agent=requirement_agent,
         implementation_agent=ImplementationAgent(test_config.logging.log_dir),
         qa_agent=QAAgent(test_config.logging.log_dir),
         promotion_agent=PromotionAgent(test_config.logging.log_dir),
         approval_service=RejectingApprovalService(),
         learning_store=learning_store,
+        developer_workflow=DeveloperWorkflowStub(),
+        max_work_items_per_run=1,
         log_dir=test_config.logging.log_dir,
     )
 
     summary = orchestrator.run_once()
 
     assert summary is not None
+    assert summary.repo_workflow_status == "succeeded"
     assert summary.overall_status == "failed"
     assert summary.stage_results[0].environment == "dev"
     assert summary.stage_results[0].status == "succeeded"

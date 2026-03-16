@@ -36,6 +36,8 @@ class WorkItem:
     item_type: WorkItemType
     tags: list[str] = field(default_factory=list)
     acceptance_criteria: str = ""
+    priority: int = 9999
+    repo_name: str | None = None
 
 
 @dataclass(slots=True)
@@ -50,6 +52,8 @@ class RequirementPlan:
     target_catalog: str
     target_schema: str
     target_table: str
+    target_repo: str
+    branch_name: str
     notebook_tasks: list[str]
     risk_notes: list[str] = field(default_factory=list)
 
@@ -112,6 +116,8 @@ class WorkflowRunSummary:
     work_item_id: int
     work_item_title: str
     overall_status: str
+    repo_workflow_status: str
+    repo_workflow_details: str
     stage_results: list[StageResult]
     generated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 

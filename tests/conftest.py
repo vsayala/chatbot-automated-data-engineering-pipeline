@@ -27,6 +27,17 @@ def test_config(tmp_path: Path) -> AppConfig:
                 "pipeline_name_prefix": "de-cicd",
                 "personal_access_token_env": "AZDO_PAT",
             },
+            "azure_repos": {
+                "organization_url": "https://dev.azure.com/test-org",
+                "project": "test-project",
+                "repository_name": "test-repo",
+                "repository_url": "https://dev.azure.com/test-org/test-project/_git/test-repo",
+                "default_base_branch": "main",
+                "branch_prefix": "feature/pbi-",
+                "local_checkout_path": str(tmp_path),
+                "personal_access_token_env": "AZDO_PAT",
+                "dry_run": True,
+            },
             "databricks": {
                 "workspace_urls": {
                     "dev": "https://adb-dev.azuredatabricks.net",
@@ -47,9 +58,23 @@ def test_config(tmp_path: Path) -> AppConfig:
                 "log_dir": str(tmp_path / "logs"),
                 "log_level": "INFO",
             },
+            "prompts": {
+                "enabled": True,
+                "templates_path": "config/prompts.yaml",
+                "llm_enabled": False,
+            },
+            "mcp": {
+                "enabled": False,
+                "servers": {},
+                "server_tokens": {},
+            },
             "runtime": {
                 "poll_interval_seconds": 1,
                 "max_work_items_per_run": 1,
+                "enable_repo_automation": True,
+                "run_basic_tests": False,
+                "basic_test_command": "python3 -m pytest -q tests/unit",
+                "auto_create_pr": True,
             },
             "learning_store_path": str(tmp_path / "learning.json"),
         }

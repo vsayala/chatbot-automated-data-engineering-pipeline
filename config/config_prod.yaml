@@ -4,15 +4,33 @@ local_mode: false
 azure_devops:
   organization_url: "https://dev.azure.com/your-org"
   project: "data-engineering"
+  board_url: "https://dev.azure.com/your-org/data-engineering/_boards/board"
   personal_access_token_env: "AZDO_PAT"
-  query_id: "<replace-with-query-id>"
+  personal_access_token: "" # keep empty and use env/Key Vault in production
   mock_data_path: "sample_data/work_items.json"
+  priority_field_name: "Microsoft.VSTS.Common.Priority"
+  repo_hint_tag_prefix: "repo:"
+  wiql_query: "Select [System.Id], [System.Title], [System.WorkItemType], [Microsoft.VSTS.Common.Priority] From WorkItems Where [System.TeamProject] = @project And [System.WorkItemType] In ('Product Backlog Item', 'Bug', 'User Story') And [System.State] <> 'Closed' Order By [Microsoft.VSTS.Common.Priority] Asc, [System.ChangedDate] Desc"
 
 azure_pipelines:
   organization_url: "https://dev.azure.com/your-org"
   project: "data-engineering"
   pipeline_name_prefix: "de-cicd"
+  pipeline_url: "https://dev.azure.com/your-org/data-engineering/_build"
   personal_access_token_env: "AZDO_PAT"
+  personal_access_token: ""
+
+azure_repos:
+  organization_url: "https://dev.azure.com/your-org"
+  project: "data-engineering"
+  repository_name: "data-engineering-repo"
+  repository_url: "https://dev.azure.com/your-org/data-engineering/_git/data-engineering-repo"
+  default_base_branch: "main"
+  branch_prefix: "feature/pbi-"
+  local_checkout_path: "."
+  personal_access_token_env: "AZDO_PAT"
+  personal_access_token: ""
+  dry_run: false
 
 databricks:
   workspace_urls:
@@ -21,6 +39,7 @@ databricks:
     stg: "https://adb-stg.azuredatabricks.net"
     prod: "https://adb-prod.azuredatabricks.net"
   token_env: "DATABRICKS_TOKEN"
+  token: ""
   job_yaml_folder: "jobs"
 
 approvals:
@@ -33,8 +52,30 @@ logging:
   log_dir: "logs"
   log_level: "INFO"
 
+prompts:
+  enabled: true
+  templates_path: "config/prompts.yaml"
+  llm_enabled: true
+  llm_endpoint_url: "https://your-llm-host/v1/chat/completions"
+  llm_model: "gpt-4o-mini"
+  llm_api_key_env: "LLM_API_KEY"
+  llm_api_key: ""
+
+mcp:
+  enabled: true
+  servers:
+    azure_devops_mcp: "http://localhost:3001/mcp"
+    databricks_mcp: "http://localhost:3002/mcp"
+  server_tokens:
+    azure_devops_mcp: ""
+    databricks_mcp: ""
+
 runtime:
   poll_interval_seconds: 60
-  max_work_items_per_run: 1
+  max_work_items_per_run: 3
+  enable_repo_automation: true
+  run_basic_tests: true
+  basic_test_command: "python3 -m pytest -q tests/unit"
+  auto_create_pr: true
 
 learning_store_path: "state/learning_memory.json"

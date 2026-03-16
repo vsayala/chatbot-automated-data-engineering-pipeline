@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 
 from agentic_de_pipeline.config import AppConfig
 from agentic_de_pipeline.logging_utils import get_module_logger
 from agentic_de_pipeline.models import RequirementPlan, StageResult
+from agentic_de_pipeline.utils.secrets import resolve_secret
 from agentic_de_pipeline.utils.timing import timed_operation
 
 
@@ -66,10 +66,12 @@ class DatabricksWorkspaceClient:
         import json
         import urllib.request
 
-        token_env = self.config.databricks.token_env
-        token = os.getenv(token_env)
-        if not token:
-            raise RuntimeError(f"Missing Databricks token in env var: {token_env}")
+        token = resolve_secret(
+            direct_value=self.config.databricks.token,
+            env_name=self.config.databricks.token_env,
+            secret_label="Databricks token",
+            required=True,
+        )
 
         workspace_url = self.config.databricks.workspace_urls[environment].rstrip("/")
         headers = {

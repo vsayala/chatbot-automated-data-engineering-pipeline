@@ -6,14 +6,28 @@ import re
 
 from agentic_de_pipeline.logging_utils import get_module_logger
 from agentic_de_pipeline.models import RequirementPlan, WorkItem
+from agentic_de_pipeline.services.mcp_router import MCPRouter
+from agentic_de_pipeline.services.prompt_engine import PromptEngine
 from agentic_de_pipeline.state_store import LearningStore
 
 
 class RequirementAgent:
     """Converts work items into implementation plans."""
 
-    def __init__(self, log_dir: str, learning_store: LearningStore) -> None:
+    def __init__(
+        self,
+        log_dir: str,
+        learning_store: LearningStore,
+        prompt_engine: PromptEngine,
+        mcp_router: MCPRouter,
+        default_repo_name: str,
+        branch_prefix: str,
+    ) -> None:
         self.learning_store = learning_store
+        self.prompt_engine = prompt_engine
+        self.mcp_router = mcp_router
+        self.default_repo_name = default_repo_name
+        self.branch_prefix = branch_prefix
         self.logger = get_module_logger(
             module_name="agentic_de_pipeline.requirement_agent",
             log_dir=log_dir,
@@ -27,6 +41,8 @@ class RequirementAgent:
         source_types = self._extract_source_types(text_blob)
         ingestion_mode = self._extract_ingestion_mode(text_blob)
         target_catalog, target_schema, target_table = self._extract_target_table(work_item)
+        target_repo = work_item.repo_name or self.default_repo_name
+        branch_name = self._build_branch_name(work_item)
 
         ranked_history = self.learning_store.suggest_source_priority()
         if ranked_history:
@@ -43,21 +59,40 @@ class RequirementAgent:
             "run_data_quality_checks",
         ]
 
+        mcp_snapshot = self.mcp_router.status_snapshot()
+        summary_prompt = self.prompt_engine.render(
+            "requirement_summary",
+            {
+                "title": work_item.title,
+                "description": work_item.description,
+                "acceptance_criteria": work_item.acceptance_criteria,
+                "target_repo": target_repo,
+                "priority": work_item.priority,
+                "mcp_status": mcp_snapshot,
+                "fallback": f"Implement {work_item.title}",
+            },
+        )
+        summary = self.prompt_engine.generate_text(summary_prompt)
+
         plan = RequirementPlan(
             work_item_id=work_item.id,
-            summary=f"Implement {work_item.title}",
+            summary=summary,
             source_types=source_types,
             ingestion_mode=ingestion_mode,
             target_layer="bronze",
             target_catalog=target_catalog,
             target_schema=target_schema,
             target_table=target_table,
+            target_repo=target_repo,
+            branch_name=branch_name,
             notebook_tasks=notebook_tasks,
             risk_notes=self._collect_risk_notes(source_types, ingestion_mode),
         )
         self.logger.info(
-            "requirement_plan_created work_item_id=%s target=%s.%s.%s mode=%s",
+            "requirement_plan_created work_item_id=%s priority=%s repo=%s target=%s.%s.%s mode=%s",
             plan.work_item_id,
+            work_item.priority,
+            plan.target_repo,
             plan.target_catalog,
             plan.target_schema,
             plan.target_table,
@@ -93,6 +128,11 @@ class RequirementAgent:
         if matches:
             catalog, schema, table = matches[0]
         return catalog.lower(), schema.lower(), table.lower()
+
+    def _build_branch_name(self, work_item: WorkItem) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", work_item.title.lower()).strip("-")
+        slug = slug[:35] if slug else "work-item"
+        return f"{self.branch_prefix}{work_item.id}-{slug}"
 
     @staticmethod
     def _collect_risk_notes(source_types: list[str], ingestion_mode: str) -> list[str]:

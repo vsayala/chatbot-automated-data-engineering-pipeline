@@ -1,0 +1,11 @@
+requirement_summary: |
+  You are processing a data engineering work item for an Azure-first platform.
+  Title: {title}
+  Description: {description}
+  Acceptance Criteria: {acceptance_criteria}
+  Priority: {priority}
+  Target Repo: {target_repo}
+  MCP Status: {mcp_status}
+
+  Generate a concise execution summary that covers repository impact, ingestion intent,
+  and release-safety expectations for human-in-the-loop approvals.

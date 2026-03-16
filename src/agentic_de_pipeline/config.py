@@ -14,9 +14,20 @@ class AzureDevOpsConfig(BaseModel):
 
     organization_url: str = "https://dev.azure.com/your-org"
     project: str = "data-engineering"
+    board_url: str = "https://dev.azure.com/your-org/data-engineering/_boards/board"
     personal_access_token_env: str = "AZDO_PAT"
-    query_id: str = ""
+    personal_access_token: str | None = None
     mock_data_path: str = "sample_data/work_items.json"
+    priority_field_name: str = "Microsoft.VSTS.Common.Priority"
+    repo_hint_tag_prefix: str = "repo:"
+    wiql_query: str = (
+        "Select [System.Id], [System.Title], [System.WorkItemType], [Microsoft.VSTS.Common.Priority] "
+        "From WorkItems "
+        "Where [System.TeamProject] = @project "
+        "And [System.WorkItemType] In ('Product Backlog Item', 'Bug', 'User Story') "
+        "And [System.State] <> 'Closed' "
+        "Order By [Microsoft.VSTS.Common.Priority] Asc, [System.ChangedDate] Desc"
+    )
 
 
 class AzurePipelinesConfig(BaseModel):
@@ -25,7 +36,24 @@ class AzurePipelinesConfig(BaseModel):
     organization_url: str = "https://dev.azure.com/your-org"
     project: str = "data-engineering"
     pipeline_name_prefix: str = "de-cicd"
+    pipeline_url: str = "https://dev.azure.com/your-org/data-engineering/_build"
     personal_access_token_env: str = "AZDO_PAT"
+    personal_access_token: str | None = None
+
+
+class AzureReposConfig(BaseModel):
+    """Settings for Azure Repos branch/PR automation."""
+
+    organization_url: str = "https://dev.azure.com/your-org"
+    project: str = "data-engineering"
+    repository_name: str = "data-engineering-repo"
+    repository_url: str = "https://dev.azure.com/your-org/data-engineering/_git/data-engineering-repo"
+    default_base_branch: str = "main"
+    branch_prefix: str = "feature/pbi-"
+    local_checkout_path: str = "."
+    personal_access_token_env: str = "AZDO_PAT"
+    personal_access_token: str | None = None
+    dry_run: bool = True
 
 
 class DatabricksConfig(BaseModel):
@@ -33,6 +61,7 @@ class DatabricksConfig(BaseModel):
 
     workspace_urls: dict[str, str] = Field(default_factory=dict)
     token_env: str = "DATABRICKS_TOKEN"
+    token: str | None = None
     job_yaml_folder: str = "jobs"
 
     @field_validator("workspace_urls")
@@ -62,11 +91,35 @@ class LoggingConfig(BaseModel):
     log_level: str = "INFO"
 
 
+class PromptConfig(BaseModel):
+    """Prompt templates and optional hosted LLM settings."""
+
+    enabled: bool = True
+    templates_path: str = "config/prompts.yaml"
+    llm_enabled: bool = False
+    llm_endpoint_url: str | None = None
+    llm_model: str = "gpt-4o-mini"
+    llm_api_key_env: str = "LLM_API_KEY"
+    llm_api_key: str | None = None
+
+
+class MCPConfig(BaseModel):
+    """Model Context Protocol connector settings."""
+
+    enabled: bool = False
+    servers: dict[str, str] = Field(default_factory=dict)
+    server_tokens: dict[str, str] = Field(default_factory=dict)
+
+
 class RuntimeConfig(BaseModel):
     """Runtime behavior controls."""
 
     poll_interval_seconds: int = 30
     max_work_items_per_run: int = 1
+    enable_repo_automation: bool = True
+    run_basic_tests: bool = True
+    basic_test_command: str = "python3 -m pytest -q tests/unit"
+    auto_create_pr: bool = True
 
 
 class AppConfig(BaseModel):
@@ -76,9 +129,12 @@ class AppConfig(BaseModel):
     local_mode: bool = True
     azure_devops: AzureDevOpsConfig = Field(default_factory=AzureDevOpsConfig)
     azure_pipelines: AzurePipelinesConfig = Field(default_factory=AzurePipelinesConfig)
+    azure_repos: AzureReposConfig = Field(default_factory=AzureReposConfig)
     databricks: DatabricksConfig
     approvals: ApprovalConfig = Field(default_factory=ApprovalConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    prompts: PromptConfig = Field(default_factory=PromptConfig)
+    mcp: MCPConfig = Field(default_factory=MCPConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     learning_store_path: str = "state/learning_memory.json"
 

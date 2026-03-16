@@ -3,65 +3,74 @@
 ## Purpose
 This project implements a local-first, human-in-the-loop agentic workflow for data engineering delivery using Microsoft services:
 - Azure DevOps Boards (PBI/bug/user story intake)
-- Azure Databricks Unity Catalog workspaces (dev/qe/stg/prod)
+- Azure Repos (branch + PR automation)
 - Azure Pipelines CI/CD promotion
+- Azure Databricks Unity Catalog workspaces (dev/qe/stg/prod)
 - Chatbot/API approval checkpoints for safe deployments
 
-The current implementation is an MVP foundation that runs fully local while preserving production-ready integration paths in code (commented/instructional blocks included in adapters).
+## What this build now supports
+1. Reads DevOps work items and ranks by **priority**.
+2. Infers target repo from tags (example: `repo:data-engineering-repo`) or default config.
+3. Generates branch name with work item ID (`feature/pbi-<id>-...`).
+4. Executes developer workflow (branch, basic tests, commit/push, PR hook).
+5. Runs stage flow Dev -> QE -> STG -> PROD with mandatory approvals.
+6. Keeps learning memory for future ranking/context.
+7. Uses prompt templates and optional hosted LLM endpoint.
+8. Supports MCP server configuration snapshot for tool integrations.
 
 ## Architecture (Local Runtime)
 ```text
 Azure DevOps Work Items (mock/local JSON or REST)
             |
             v
-Requirement Agent --> Implementation Agent --> Databricks Adapter (dev/qe/stg/prod)
-            |                                          |
-            v                                          v
-      Human Approval Service <---- Chat API ---- Azure Pipelines Adapter
+Requirement Agent (Prompt + MCP context)
             |
             v
-      QA Agent + Promotion Agent
+Developer Workflow Service -> Azure Repos (branch/tests/commit/push/PR)
             |
             v
-      Learning Store (state/learning_memory.json)
-
-Observability:
-- logs/project_master.log (aggregate)
-- module logs (azure_devops.log, databricks.log, azure_pipelines.log, orchestrator.log, etc.)
+Databricks + Azure Pipelines + QA + Promotion Agent
+            |
+            v
+Human Approval Service (QE/STG/PROD gates via API/Console)
+            |
+            v
+Learning Store (state/learning_memory.json)
 ```
 
-## Folder Structure
-- `main.py` - single entry point (run once, loop, chatbot server)
-- `src/agentic_de_pipeline/` - modular source package
-- `config/config_local.yaml` - local settings
-- `config/config_prod.yaml` - production template settings
-- `sample_data/work_items.json` - local work-item mock input
-- `tests/` - unit, integration, regression suites
-- `state/` - approvals + learning persistence
-- `logs/` - runtime logs
+## Config you need (`config/config_local.yaml`)
+You can provide all service links directly:
+- Azure DevOps: `organization_url`, `project`, `board_url`
+- Azure Repos: `repository_url`, `repository_name`
+- Azure Pipelines: `pipeline_url`
+- Databricks: workspace URLs for `dev/qe/stg/prod`
 
-## Prerequisites
-- Python 3.11+
+### Token options
+Each integration accepts either:
+- direct token in config (example `personal_access_token`, `token`), or
+- env var reference (`*_env` fields).
+
+> Recommended for real usage: keep token fields empty and use environment variables.
 
 ## Local Setup
 1. Install dependencies:
    ```bash
-   pip install -r requirements.txt
+   python3 -m pip install -r requirements.txt
    ```
 
 2. Run tests:
    ```bash
-   pytest
+   python3 -m pytest
    ```
 
 3. Process one work item:
    ```bash
-   python main.py --config config/config_local.yaml run-once
+   python3 main.py --config config/config_local.yaml run-once
    ```
 
 4. Start chatbot approval API:
    ```bash
-   python main.py --config config/config_local.yaml serve-chat --host 0.0.0.0 --port 8000
+   python3 main.py --config config/config_local.yaml serve-chat --host 0.0.0.0 --port 8000
    ```
 
 5. Trigger processing via API:
@@ -81,23 +90,21 @@ Observability:
      -d '{"approved": true, "approver": "engineer@local", "comment": "Looks good"}'
    ```
 
-## Local Security Notes
-- Never hardcode secrets.
-- For production mode, set secrets via env vars:
-  - `AZDO_PAT`
-  - `DATABRICKS_TOKEN`
+## Runtime and safety flags
+- `azure_repos.dry_run: true` => simulate branch/commit/push/PR calls safely.
+- `runtime.enable_repo_automation: true` => enable repository lifecycle automation.
+- `runtime.run_basic_tests: true` + `runtime.basic_test_command` => local validation command.
 
 ## Logging
 - Master log: `logs/project_master.log`
 - Module logs:
   - `logs/azure_devops.log`
+  - `logs/azure_repos.log`
   - `logs/databricks.log`
   - `logs/azure_pipelines.log`
   - `logs/orchestrator.log`
   - `logs/approvals.log`
-  - plus agent-specific logs
-
-Each operation logs start/end, duration, errors, and resource metrics (CPU time + memory high-water mark).
+  - plus agent/service logs
 
 ## Changelog
-- **2026-03-16**: Initial MVP scaffold created (orchestrator, adapters, HITL approvals, chatbot API, local config, tests).
+- **2026-03-16**: Added priority-based intake, repo automation flow, prompts/MCP config, and token-capable service configuration.

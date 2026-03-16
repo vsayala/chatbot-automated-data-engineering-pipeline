@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from datetime import UTC, datetime
 
 from agentic_de_pipeline.config import AppConfig
 from agentic_de_pipeline.logging_utils import get_module_logger
 from agentic_de_pipeline.models import PipelineRunResult, RequirementPlan
+from agentic_de_pipeline.utils.secrets import resolve_secret
 from agentic_de_pipeline.utils.timing import timed_operation
 
 
@@ -59,10 +59,12 @@ class AzurePipelinesClient:
         import base64
         import urllib.request
 
-        pat_env = self.config.azure_pipelines.personal_access_token_env
-        pat = os.getenv(pat_env)
-        if not pat:
-            raise RuntimeError(f"Missing Azure DevOps PAT in env var: {pat_env}")
+        pat = resolve_secret(
+            direct_value=self.config.azure_pipelines.personal_access_token,
+            env_name=self.config.azure_pipelines.personal_access_token_env,
+            secret_label="Azure DevOps PAT",
+            required=True,
+        )
 
         org_url = self.config.azure_pipelines.organization_url.rstrip("/")
         project = self.config.azure_pipelines.project

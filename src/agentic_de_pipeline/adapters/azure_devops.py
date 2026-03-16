@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 from agentic_de_pipeline.config import AppConfig
 from agentic_de_pipeline.logging_utils import get_module_logger
 from agentic_de_pipeline.models import WorkItem, WorkItemType
+from agentic_de_pipeline.utils.secrets import resolve_secret
 from agentic_de_pipeline.utils.timing import timed_operation
 
 
@@ -31,7 +31,7 @@ class AzureDevOpsClient:
             return self._fetch_from_azure_devops(limit=limit)
 
     def _load_mock_work_items(self, limit: int) -> list[WorkItem]:
-        """Load mock work items for local development."""
+        """Load mock work items for local development and sort by priority."""
         path = Path(self.config.azure_devops.mock_data_path)
         if not path.exists():
             self.logger.warning("mock_work_items_missing path=%s", path)
@@ -39,55 +39,45 @@ class AzureDevOpsClient:
 
         rows = json.loads(path.read_text(encoding="utf-8"))
         normalized: list[WorkItem] = []
-        for row in rows[:limit]:
+        for row in rows:
             item_type = WorkItemType(row.get("item_type", WorkItemType.USER_STORY.value))
+            tags = [str(tag) for tag in row.get("tags", [])]
+            repo_name = str(row.get("repo_name", "")).strip() or self._extract_repo_name(tags)
             normalized.append(
                 WorkItem(
                     id=int(row["id"]),
                     title=str(row["title"]),
                     description=str(row.get("description", "")),
                     item_type=item_type,
-                    tags=[str(tag) for tag in row.get("tags", [])],
+                    tags=tags,
                     acceptance_criteria=str(row.get("acceptance_criteria", "")),
+                    priority=int(row.get("priority", 9999)),
+                    repo_name=repo_name,
                 )
             )
-        self.logger.info("mock_work_items_loaded count=%s", len(normalized))
-        return normalized
+
+        ranked = sorted(normalized, key=lambda item: (item.priority, item.id))
+        selected = ranked[:limit]
+        self.logger.info("mock_work_items_loaded count=%s", len(selected))
+        return selected
 
     def _fetch_from_azure_devops(self, limit: int) -> list[WorkItem]:
-        """Fetch work items from Azure DevOps REST API.
-
-        Local-first note:
-            This block is active and uses only REST + stdlib so that production can
-            be enabled without extra SDK dependencies.
-
-        Security note:
-            PAT is read from environment variable configured in YAML.
-        """
+        """Fetch work items from Azure DevOps REST API using priority ranking."""
         import base64
         import urllib.request
 
-        pat_env = self.config.azure_devops.personal_access_token_env
-        pat = os.getenv(pat_env)
-        if not pat:
-            raise RuntimeError(f"Missing Azure DevOps PAT in env var: {pat_env}")
+        pat = resolve_secret(
+            direct_value=self.config.azure_devops.personal_access_token,
+            env_name=self.config.azure_devops.personal_access_token_env,
+            secret_label="Azure DevOps PAT",
+            required=True,
+        )
 
         org_url = self.config.azure_devops.organization_url.rstrip("/")
         project = self.config.azure_devops.project
+        priority_field = self.config.azure_devops.priority_field_name
 
-        wiql_payload = json.dumps(
-            {
-                "query": (
-                    "Select [System.Id], [System.Title], [System.WorkItemType] "
-                    "From WorkItems "
-                    "Where [System.TeamProject] = @project "
-                    "And [System.WorkItemType] In ('Product Backlog Item', 'Bug', 'User Story') "
-                    "And [System.State] <> 'Closed' "
-                    "Order By [System.ChangedDate] Desc"
-                )
-            }
-        ).encode("utf-8")
-
+        wiql_payload = json.dumps({"query": self.config.azure_devops.wiql_query}).encode("utf-8")
         basic = base64.b64encode(f":{pat}".encode("utf-8")).decode("utf-8")
         headers = {
             "Content-Type": "application/json",
@@ -105,7 +95,10 @@ class AzureDevOpsClient:
 
         detail_url = (
             f"{org_url}/{project}/_apis/wit/workitems"
-            f"?ids={','.join(ids)}&fields=System.Id,System.Title,System.Description,System.WorkItemType,System.Tags,Microsoft.VSTS.Common.AcceptanceCriteria&api-version=7.0"
+            f"?ids={','.join(ids)}"
+            "&fields=System.Id,System.Title,System.Description,System.WorkItemType,System.Tags,"
+            f"Microsoft.VSTS.Common.AcceptanceCriteria,{priority_field}"
+            "&api-version=7.0"
         )
         detail_req = urllib.request.Request(detail_url, headers=headers, method="GET")
         with urllib.request.urlopen(detail_req, timeout=30) as resp:  # nosec B310
@@ -119,7 +112,9 @@ class AzureDevOpsClient:
                 item_type = WorkItemType(type_value)
             except ValueError:
                 item_type = WorkItemType.USER_STORY
+
             tags = [tag.strip() for tag in fields.get("System.Tags", "").split(";") if tag.strip()]
+            repo_name = self._extract_repo_name(tags)
             output.append(
                 WorkItem(
                     id=int(fields["System.Id"]),
@@ -128,10 +123,23 @@ class AzureDevOpsClient:
                     item_type=item_type,
                     tags=tags,
                     acceptance_criteria=str(fields.get("Microsoft.VSTS.Common.AcceptanceCriteria", "")),
+                    priority=int(fields.get(priority_field, 9999)),
+                    repo_name=repo_name,
                 )
             )
-        self.logger.info("azure_devops_work_items_loaded count=%s", len(output))
-        return output
+
+        ranked = sorted(output, key=lambda item: (item.priority, item.id))
+        self.logger.info("azure_devops_work_items_loaded count=%s", len(ranked))
+        return ranked[:limit]
+
+    def _extract_repo_name(self, tags: list[str]) -> str | None:
+        """Extract repository hint from tags such as repo:analytics-platform."""
+        prefix = self.config.azure_devops.repo_hint_tag_prefix.lower().strip()
+        for tag in tags:
+            tag_clean = tag.strip()
+            if tag_clean.lower().startswith(prefix):
+                return tag_clean[len(prefix) :].strip() or None
+        return None
 
     # Production SDK option (disabled/commented intentionally):
     # ------------------------------------------------------------------
@@ -139,14 +147,4 @@ class AzureDevOpsClient:
     # 1) install dependency: pip install azure-devops
     # 2) enable secure PAT retrieval from Key Vault / managed identity
     # 3) replace REST calls with SDK client usage below.
-    #
-    # from azure.devops.connection import Connection
-    # from msrest.authentication import BasicAuthentication
-    #
-    # def _fetch_with_sdk(self, limit: int) -> list[WorkItem]:
-    #     pat = os.getenv(self.config.azure_devops.personal_access_token_env)
-    #     creds = BasicAuthentication('', pat)
-    #     connection = Connection(base_url=self.config.azure_devops.organization_url, creds=creds)
-    #     wit_client = connection.clients.get_work_item_tracking_client()
-    #     ...
     # ------------------------------------------------------------------

@@ -14,6 +14,7 @@ from agentic_de_pipeline.agents.requirement_agent import RequirementAgent
 from agentic_de_pipeline.approvals.human_loop import HumanApprovalService
 from agentic_de_pipeline.logging_utils import get_module_logger
 from agentic_de_pipeline.models import ApprovalStatus, LearningRecord, StageResult, WorkflowRunSummary
+from agentic_de_pipeline.services.developer_workflow import DeveloperWorkflowService
 from agentic_de_pipeline.state_store import LearningStore
 from agentic_de_pipeline.utils.timing import timed_operation
 
@@ -32,6 +33,8 @@ class AgenticOrchestrator:
         promotion_agent: PromotionAgent,
         approval_service: HumanApprovalService,
         learning_store: LearningStore,
+        developer_workflow: DeveloperWorkflowService,
+        max_work_items_per_run: int,
         log_dir: str,
     ) -> None:
         self.devops_client = devops_client
@@ -43,6 +46,8 @@ class AgenticOrchestrator:
         self.promotion_agent = promotion_agent
         self.approval_service = approval_service
         self.learning_store = learning_store
+        self.developer_workflow = developer_workflow
+        self.max_work_items_per_run = max_work_items_per_run
         self.logger = get_module_logger(
             module_name="agentic_de_pipeline.orchestrator",
             log_dir=log_dir,
@@ -50,19 +55,31 @@ class AgenticOrchestrator:
         )
 
     def run_once(self) -> WorkflowRunSummary | None:
-        """Process one work item from intake to promotion chain."""
+        """Process one highest-priority work item from intake to promotion chain."""
         with timed_operation(self.logger, "orchestrator_run_once"):
-            items = self.devops_client.fetch_open_work_items(limit=1)
+            items = self.devops_client.fetch_open_work_items(limit=self.max_work_items_per_run)
             if not items:
                 self.logger.info("orchestrator_no_work_items")
                 return None
 
             work_item = items[0]
             plan = self.requirement_agent.build_plan(work_item)
+            repo_status, repo_details = self.developer_workflow.execute(work_item=work_item, plan=plan)
+
             stage_results: list[StageResult] = []
             overall_status = "succeeded"
+            if repo_status == "failed":
+                overall_status = "failed"
+                self.logger.error(
+                    "orchestrator_repo_workflow_failed work_item_id=%s details=%s",
+                    work_item.id,
+                    repo_details,
+                )
 
             for environment in ["dev", "qe", "stg", "prod"]:
+                if overall_status == "failed":
+                    break
+
                 stage_start = datetime.now(UTC)
                 notes = self.implementation_agent.build_execution_notes(plan, environment)
                 approval_details = "Approval not required."
@@ -133,12 +150,15 @@ class AgenticOrchestrator:
                 work_item_id=work_item.id,
                 work_item_title=work_item.title,
                 overall_status=overall_status,
+                repo_workflow_status=repo_status,
+                repo_workflow_details=repo_details,
                 stage_results=stage_results,
             )
             self.logger.info(
-                "orchestrator_completed work_item_id=%s status=%s stages=%s",
+                "orchestrator_completed work_item_id=%s status=%s stages=%s repo_status=%s",
                 summary.work_item_id,
                 summary.overall_status,
                 len(summary.stage_results),
+                summary.repo_workflow_status,
             )
             return summary

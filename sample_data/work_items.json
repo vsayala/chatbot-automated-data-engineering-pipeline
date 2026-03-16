@@ -4,7 +4,8 @@
     "title": "Create bronze.main.customer_profile from JDBC EDW source with append",
     "description": "Build ingestion from external Azure EDW using JDBC and load to Unity Catalog bronze table.",
     "item_type": "User Story",
-    "tags": ["bronze", "jdbc", "unity-catalog"],
+    "priority": 1,
+    "tags": ["bronze", "jdbc", "unity-catalog", "repo:data-engineering-repo"],
     "acceptance_criteria": "Data ingests daily; append mode; schema validation enabled."
   },
   {
@@ -12,7 +13,8 @@
     "title": "Bug: flat file volume ingestion overwrite for main.bronze.order_events",
     "description": "Fix malformed records handling and enforce overwrite for reprocessing pipeline.",
     "item_type": "Bug",
-    "tags": ["flat-file", "bronze", "overwrite"],
+    "priority": 2,
+    "tags": ["flat-file", "bronze", "overwrite", "repo:data-engineering-repo"],
     "acceptance_criteria": "No duplicate rows after overwrite and DQ checks pass."
   }
 ]

@@ -20,7 +20,8 @@ class ImplementationAgent:
         """Return concise execution notes used by orchestrator and approvals."""
         note = (
             f"Prepare {environment} deployment for {plan.target_catalog}.{plan.target_schema}.{plan.target_table} "
-            f"using mode={plan.ingestion_mode}, sources={','.join(plan.source_types)}"
+            f"using mode={plan.ingestion_mode}, sources={','.join(plan.source_types)}, "
+            f"repo={plan.target_repo}, branch={plan.branch_name}"
         )
         self.logger.info(
             "implementation_notes_built work_item_id=%s environment=%s",

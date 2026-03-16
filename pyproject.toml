@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-data-engineering-cicd"
+version = "0.1.0"
+description = "Local-first agentic AI system for Azure-based data engineering CI/CD workflows"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi",
+  "pydantic>=2",
+  "pyyaml",
+  "uvicorn",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "src"
+]
+addopts = "-q"

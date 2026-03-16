@@ -17,7 +17,9 @@ def test_local_full_workflow_runs_across_all_stages(test_config) -> None:
     assert summary.overall_status == "succeeded"
     assert [row.environment for row in summary.stage_results] == ["dev", "qe", "stg", "prod"]
     assert all(row.status == "succeeded" for row in summary.stage_results)
+    assert "Databricks apply skipped for stage=qe" in summary.stage_results[1].details
 
     jobs_path = Path(test_config.databricks.job_yaml_folder)
     assert jobs_path.exists()
-    assert len(list(jobs_path.glob("*_work_item_*.yaml"))) >= 4
+    # Default workflow applies Databricks changes in DEV only.
+    assert len(list(jobs_path.glob("*_work_item_*.yaml"))) >= 1

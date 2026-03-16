@@ -20,8 +20,20 @@ Use `config/config_prod.yaml` and provide:
 - DevOps board URL + organization/project
 - Repos URL + repository
 - Pipelines URL/prefix
-- Databricks workspace URLs for dev/qe/stg/prod
+- Databricks workspace URLs (DEV required; QE/STG/PROD optional if pipelines own promotion)
 - Prompt and MCP configuration
+
+### Why two YAML files?
+- `config/config_local.yaml` is for safe local runs, mock/testing, and quick iteration.
+- `config/config_prod.yaml` is for real service endpoints, stricter approvals, and hosted LLM/MCP wiring.
+
+Keeping them separate avoids accidental production calls during development.
+
+### Recommended workflow for your current model
+If Databricks changes are done in DEV and Azure Pipelines handles promotions, keep:
+- `workflow.stage_sequence: ["dev","qe","stg","prod"]`
+- `workflow.databricks_apply_in_stages: ["dev"]`
+- `workflow.hil_approval_stages: ["qe","stg","prod"]`
 
 ### Token handling
 Supported in code:

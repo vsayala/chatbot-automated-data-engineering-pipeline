@@ -67,12 +67,18 @@ class DatabricksConfig(BaseModel):
     @field_validator("workspace_urls")
     @classmethod
     def validate_workspace_urls(cls, value: dict[str, str]) -> dict[str, str]:
-        """Ensure required environments are configured."""
-        required = {"dev", "qe", "stg", "prod"}
-        missing = required - set(value)
-        if missing:
-            raise ValueError(f"Missing Databricks workspace URL for: {sorted(missing)}")
+        """Ensure at least one workspace URL is configured."""
+        if not value:
+            raise ValueError("At least one Databricks workspace URL must be configured.")
         return value
+
+
+class WorkflowConfig(BaseModel):
+    """Workflow stage and gate behavior controls."""
+
+    stage_sequence: list[str] = Field(default_factory=lambda: ["dev", "qe", "stg", "prod"])
+    databricks_apply_in_stages: list[str] = Field(default_factory=lambda: ["dev"])
+    hil_approval_stages: list[str] = Field(default_factory=lambda: ["qe", "stg", "prod"])
 
 
 class ApprovalConfig(BaseModel):
@@ -135,6 +141,7 @@ class AppConfig(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     prompts: PromptConfig = Field(default_factory=PromptConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
+    workflow: WorkflowConfig = Field(default_factory=WorkflowConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     learning_store_path: str = "state/learning_memory.json"
 

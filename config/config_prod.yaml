@@ -35,9 +35,6 @@ azure_repos:
 databricks:
   workspace_urls:
     dev: "https://adb-dev.azuredatabricks.net"
-    qe: "https://adb-qe.azuredatabricks.net"
-    stg: "https://adb-stg.azuredatabricks.net"
-    prod: "https://adb-prod.azuredatabricks.net"
   token_env: "DATABRICKS_TOKEN"
   token: ""
   job_yaml_folder: "jobs"
@@ -69,6 +66,11 @@ mcp:
   server_tokens:
     azure_devops_mcp: ""
     databricks_mcp: ""
+
+workflow:
+  stage_sequence: ["dev", "qe", "stg", "prod"]
+  databricks_apply_in_stages: ["dev"]
+  hil_approval_stages: ["qe", "stg", "prod"]
 
 runtime:
   poll_interval_seconds: 60

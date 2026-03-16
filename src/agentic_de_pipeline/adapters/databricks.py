@@ -27,6 +27,11 @@ class DatabricksWorkspaceClient:
         """Apply plan in target workspace environment."""
         with timed_operation(self.logger, f"databricks_apply_{environment}"):
             start = datetime.now(UTC)
+            if environment not in self.config.databricks.workspace_urls:
+                raise RuntimeError(
+                    f"No Databricks workspace URL configured for stage '{environment}'. "
+                    "Update databricks.workspace_urls or remove stage from workflow.databricks_apply_in_stages."
+                )
             if self.config.local_mode:
                 details = self._simulate_apply(environment=environment, plan=plan)
                 status = "succeeded"

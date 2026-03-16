@@ -77,6 +77,9 @@ def test_orchestrator_stops_on_qe_rejection(test_config) -> None:
         learning_store=learning_store,
         developer_workflow=DeveloperWorkflowStub(),
         max_work_items_per_run=1,
+        stage_sequence=["dev", "qe", "stg", "prod"],
+        databricks_apply_in_stages=["dev"],
+        hil_approval_stages=["qe", "stg", "prod"],
         log_dir=test_config.logging.log_dir,
     )
 

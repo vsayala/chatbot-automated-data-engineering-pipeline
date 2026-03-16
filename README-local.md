@@ -43,7 +43,15 @@ You can provide all service links directly:
 - Azure DevOps: `organization_url`, `project`, `board_url`
 - Azure Repos: `repository_url`, `repository_name`
 - Azure Pipelines: `pipeline_url`
-- Databricks: workspace URLs for `dev/qe/stg/prod`
+- Databricks: workspace URLs (for your current model, DEV is enough)
+
+### Workflow model for "DEV Databricks + Pipeline promotions"
+Use:
+- `workflow.stage_sequence: ["dev","qe","stg","prod"]`
+- `workflow.databricks_apply_in_stages: ["dev"]`
+- `workflow.hil_approval_stages: ["qe","stg","prod"]`
+
+This means the agent changes Databricks only in DEV, then drives QE/STG/PROD through pipeline runs with human approvals.
 
 ### Token options
 Each integration accepts either:
@@ -94,6 +102,7 @@ Each integration accepts either:
 - `azure_repos.dry_run: true` => simulate branch/commit/push/PR calls safely.
 - `runtime.enable_repo_automation: true` => enable repository lifecycle automation.
 - `runtime.run_basic_tests: true` + `runtime.basic_test_command` => local validation command.
+- `workflow.*` => control stage order, where Databricks is executed, and where HIL approval is required.
 
 ## Logging
 - Master log: `logs/project_master.log`

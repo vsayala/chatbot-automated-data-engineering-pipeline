@@ -35,6 +35,9 @@ class AgenticOrchestrator:
         learning_store: LearningStore,
         developer_workflow: DeveloperWorkflowService,
         max_work_items_per_run: int,
+        stage_sequence: list[str],
+        databricks_apply_in_stages: list[str],
+        hil_approval_stages: list[str],
         log_dir: str,
     ) -> None:
         self.devops_client = devops_client
@@ -48,6 +51,9 @@ class AgenticOrchestrator:
         self.learning_store = learning_store
         self.developer_workflow = developer_workflow
         self.max_work_items_per_run = max_work_items_per_run
+        self.stage_sequence = stage_sequence
+        self.databricks_apply_in_stages = set(databricks_apply_in_stages)
+        self.hil_approval_stages = set(hil_approval_stages)
         self.logger = get_module_logger(
             module_name="agentic_de_pipeline.orchestrator",
             log_dir=log_dir,
@@ -76,7 +82,7 @@ class AgenticOrchestrator:
                     repo_details,
                 )
 
-            for environment in ["dev", "qe", "stg", "prod"]:
+            for environment in self.stage_sequence:
                 if overall_status == "failed":
                     break
 
@@ -84,7 +90,7 @@ class AgenticOrchestrator:
                 notes = self.implementation_agent.build_execution_notes(plan, environment)
                 approval_details = "Approval not required."
 
-                if environment != "dev":
+                if environment in self.hil_approval_stages:
                     approval = self.approval_service.request_approval(stage=environment, summary=notes)
                     approval_details = (
                         f"approval_status={approval.status.value}, approver={approval.approver}, comment={approval.comment}"
@@ -102,7 +108,11 @@ class AgenticOrchestrator:
                         overall_status = "failed"
                         break
 
-                db_result = self.databricks_client.apply_plan(environment=environment, plan=plan)
+                if environment in self.databricks_apply_in_stages:
+                    db_result = self.databricks_client.apply_plan(environment=environment, plan=plan)
+                    databricks_details = db_result.details
+                else:
+                    databricks_details = f"Databricks apply skipped for stage={environment} by workflow config."
                 pipeline_result = self.pipelines_client.run_cicd(environment=environment, plan=plan)
                 qa_passed, qa_details = self.qa_agent.validate_stage(environment=environment, plan=plan)
                 can_promote, promotion_reason = self.promotion_agent.can_promote(
@@ -116,7 +126,7 @@ class AgenticOrchestrator:
                     [
                         notes,
                         approval_details,
-                        db_result.details,
+                        databricks_details,
                         f"pipeline_run_id={pipeline_result.run_id}",
                         qa_details,
                         promotion_reason,

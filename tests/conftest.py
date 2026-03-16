@@ -68,6 +68,11 @@ def test_config(tmp_path: Path) -> AppConfig:
                 "servers": {},
                 "server_tokens": {},
             },
+            "workflow": {
+                "stage_sequence": ["dev", "qe", "stg", "prod"],
+                "databricks_apply_in_stages": ["dev"],
+                "hil_approval_stages": ["qe", "stg", "prod"],
+            },
             "runtime": {
                 "poll_interval_seconds": 1,
                 "max_work_items_per_run": 1,

@@ -59,5 +59,8 @@ def build_orchestrator(config: AppConfig) -> AgenticOrchestrator:
         learning_store=learning_store,
         developer_workflow=developer_workflow,
         max_work_items_per_run=config.runtime.max_work_items_per_run,
+        stage_sequence=config.workflow.stage_sequence,
+        databricks_apply_in_stages=config.workflow.databricks_apply_in_stages,
+        hil_approval_stages=config.workflow.hil_approval_stages,
         log_dir=config.logging.log_dir,
     )

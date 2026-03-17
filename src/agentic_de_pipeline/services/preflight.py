@@ -222,6 +222,8 @@ class PreflightValidator:
                 continue
             hostname = get_hostname(endpoint)
             if not hostname:
+                # Fail closed: treat endpoints with no parsed hostname as disallowed.
+                disallowed.add(endpoint)
                 continue
             if not matches_hostname_suffixes(hostname, allowed):
                 disallowed.add(hostname)

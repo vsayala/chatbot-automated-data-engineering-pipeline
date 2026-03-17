@@ -51,6 +51,9 @@ def is_internal_endpoint(
 def get_hostname(endpoint_url: str) -> str:
     """Extract lowercase hostname from URL or return empty string."""
     parsed = urlparse(endpoint_url)
+    # Handle schemeless inputs like "localhost:3001" or "example.com"
+    if parsed.hostname is None and "://" not in endpoint_url and not endpoint_url.startswith("//"):
+        parsed = urlparse(f"http://{endpoint_url}")
     return (parsed.hostname or "").strip().lower()
 
 

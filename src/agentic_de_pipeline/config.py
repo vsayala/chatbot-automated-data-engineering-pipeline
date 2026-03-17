@@ -180,6 +180,25 @@ class RuntimeConfig(BaseModel):
     require_hil_approval_for_remediation: bool = True
 
 
+class TransformerConfig(BaseModel):
+    """Repo-specific remediation transformer settings."""
+
+    enabled: bool = True
+    enabled_plugins: list[str] = Field(
+        default_factory=lambda: ["databricks_notebook", "sql", "python_etl"]
+    )
+    allow_fallback_artifact: bool = True
+
+    @field_validator("enabled_plugins")
+    @classmethod
+    def validate_enabled_plugins(cls, value: list[str]) -> list[str]:
+        """Ensure plugin names are non-empty strings."""
+        normalized = [plugin.strip() for plugin in value if plugin.strip()]
+        if not normalized:
+            raise ValueError("transformers.enabled_plugins must include at least one plugin name.")
+        return normalized
+
+
 class AppConfig(BaseModel):
     """Top-level application configuration schema."""
 
@@ -199,6 +218,7 @@ class AppConfig(BaseModel):
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     workflow: WorkflowConfig = Field(default_factory=WorkflowConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
+    transformers: TransformerConfig = Field(default_factory=TransformerConfig)
     learning_store_path: str = "state/learning_memory.json"
 
     @model_validator(mode="after")

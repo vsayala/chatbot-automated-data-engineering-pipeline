@@ -106,6 +106,11 @@ def test_config(tmp_path: Path) -> AppConfig:
                 "max_failure_remediation_attempts": 1,
                 "require_hil_approval_for_remediation": True,
             },
+            "transformers": {
+                "enabled": True,
+                "enabled_plugins": ["databricks_notebook", "sql", "python_etl"],
+                "allow_fallback_artifact": True,
+            },
             "learning_store_path": str(tmp_path / "learning.json"),
         }
     )

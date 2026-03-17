@@ -20,6 +20,7 @@ Deploy this agentic CI/CD system in enterprise environments using:
 - Retry policy for transient external API failures
 - Idempotent work-item processing to avoid duplicate deployments
 - Failure remediation loop with HIL approvals before fix attempts
+- Repo-specific remediation transformers (Databricks notebook, SQL, Python ETL)
 
 ## Config strategy
 Use `config/config_connected.yaml` and provide:
@@ -28,6 +29,7 @@ Use `config/config_connected.yaml` and provide:
 - Pipelines URL/prefix
 - Databricks workspace URLs (DEV required; QE/STG/PROD optional if pipelines own promotion)
 - Prompt and MCP configuration
+- Transformer configuration for targeted auto-fixes (`transformers.enabled_plugins`)
 
 ### Why two YAML files?
 - `config/config_simulate.yaml` is for safe dry-run/mock iterations.

@@ -114,4 +114,9 @@ runtime:
   max_failure_remediation_attempts: 2
   require_hil_approval_for_remediation: true
 
+transformers:
+  enabled: true
+  enabled_plugins: ["databricks_notebook", "sql", "python_etl"]
+  allow_fallback_artifact: true
+
 learning_store_path: "state/learning_memory.json"

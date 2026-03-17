@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from agentic_de_pipeline.transformers.base import RemediationContext, RemediationTransformer, TransformerResult
 
@@ -61,8 +62,20 @@ class DatabricksNotebookTransformer(RemediationTransformer):
 
     def _inject_auto_merge_config(self, content: str) -> str:
         lines = content.splitlines()
-        insert_at = 0
-        for index, line in enumerate(lines):
+
+        # Preserve shebang and PEP 263 encoding cookie at the very top of the file.
+        header_end = 0
+        if lines and lines[0].startswith("#!"):
+            header_end = 1
+        if len(lines) > header_end:
+            # PEP 263: encoding declaration must be in line 1 or 2.
+            encoding_pattern = r"^[ \t]*#.*coding[:=][ \t]*[-\w.]+"
+            if re.match(encoding_pattern, lines[header_end]):
+                header_end += 1
+
+        insert_at = header_end
+        for index in range(header_end, len(lines)):
+            line = lines[index]
             stripped = line.strip()
             if stripped.startswith("import ") or stripped.startswith("from "):
                 insert_at = index + 1
@@ -70,6 +83,7 @@ class DatabricksNotebookTransformer(RemediationTransformer):
             if stripped == "":
                 continue
             break
+
         snippet = [
             "",
             "# Added by remediation plugin for Delta schema evolution compatibility.",

@@ -81,18 +81,40 @@ function renderClarifications(rows) {
   rows.forEach((row) => {
     const div = document.createElement('div');
     div.className = 'item';
-    const inputs = row.questions
-      .map((q, idx) => `<div class="small">Q${idx + 1}: ${q}</div><textarea id="clr-${row.request_id}-${idx}" rows="2"></textarea>`)
-      .join('');
-    div.innerHTML = `
-      <strong>#${row.work_item_id} ${row.work_item_title}</strong>
-      <div class="small">request_id=${row.request_id}</div>
-      ${inputs}
-      <button id="btn-clr-${row.request_id}" class="secondary">Submit Clarification</button>
-    `;
+
+    const titleEl = document.createElement('strong');
+    titleEl.textContent = `#${row.work_item_id} ${row.work_item_title}`;
+    div.appendChild(titleEl);
+
+    const requestInfoEl = document.createElement('div');
+    requestInfoEl.className = 'small';
+    requestInfoEl.textContent = `request_id=${row.request_id}`;
+    div.appendChild(requestInfoEl);
+
+    row.questions.forEach((q, idx) => {
+      const questionWrapper = document.createElement('div');
+      const questionLabel = document.createElement('div');
+      questionLabel.className = 'small';
+      questionLabel.textContent = `Q${idx + 1}: ${q}`;
+      questionWrapper.appendChild(questionLabel);
+
+      const textarea = document.createElement('textarea');
+      textarea.id = `clr-${row.request_id}-${idx}`;
+      textarea.rows = 2;
+      questionWrapper.appendChild(textarea);
+
+      div.appendChild(questionWrapper);
+    });
+
+    const button = document.createElement('button');
+    button.id = `btn-clr-${row.request_id}`;
+    button.className = 'secondary';
+    button.textContent = 'Submit Clarification';
+    div.appendChild(button);
+
     node.appendChild(div);
 
-    div.querySelector(`#btn-clr-${row.request_id}`).onclick = async () => {
+    button.onclick = async () => {
       const answers = {};
       row.questions.forEach((q, idx) => {
         const value = div.querySelector(`#clr-${row.request_id}-${idx}`).value || '';

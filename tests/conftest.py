@@ -68,11 +68,20 @@ def test_config(tmp_path: Path) -> AppConfig:
                 "enabled": False,
                 "servers": {},
                 "server_tokens": {},
+                "request_timeout_seconds": 2,
+            },
+            "security": {
+                "strict_private_mode": False,
+                "enforce_internal_llm_endpoint": True,
+                "enforce_internal_mcp_endpoints": True,
+                "internal_hostname_suffixes": ["localhost", "127.0.0.1", ".local"],
+                "allow_private_ip_ranges": True,
             },
             "workflow": {
                 "stage_sequence": ["dev", "qe", "stg", "prod"],
                 "databricks_apply_in_stages": ["dev"],
                 "hil_approval_stages": ["qe", "stg", "prod"],
+                "hil_approval_for_repo_actions": True,
             },
             "runtime": {
                 "poll_interval_seconds": 1,
@@ -90,6 +99,9 @@ def test_config(tmp_path: Path) -> AppConfig:
                 "retry_max_delay_seconds": 0.02,
                 "retry_backoff_multiplier": 2.0,
                 "fail_on_mcp_error": False,
+                "enable_failure_remediation": True,
+                "max_failure_remediation_attempts": 1,
+                "require_hil_approval_for_remediation": True,
             },
             "learning_store_path": str(tmp_path / "learning.json"),
         }

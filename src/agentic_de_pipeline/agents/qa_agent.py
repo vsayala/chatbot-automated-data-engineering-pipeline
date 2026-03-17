@@ -18,12 +18,36 @@ class QAAgent:
 
     def validate_stage(self, environment: str, plan: RequirementPlan) -> tuple[bool, str]:
         """Perform quality checks. Returns (is_valid, summary)."""
-        checks = [
-            "table_exists",
-            "row_count_non_zero",
-            "schema_validation",
-            "dq_rules_passed",
-        ]
+        checks = {
+            "dev": [
+                "table_exists",
+                "row_count_non_zero",
+                "schema_validation",
+                "dq_rules_passed",
+            ],
+            "qe": [
+                "smoke_test_query_success",
+                "schema_validation",
+                "dq_rules_passed",
+                "row_delta_within_threshold",
+            ],
+            "stg": [
+                "regression_suite_passed",
+                "performance_baseline_passed",
+                "schema_drift_absent",
+            ],
+            "prod": [
+                "post_deploy_smoke_passed",
+                "critical_dq_rules_passed",
+                "monitoring_alerts_green",
+            ],
+        }.get(
+            environment,
+            [
+                "table_exists",
+                "dq_rules_passed",
+            ],
+        )
         message = (
             f"QA checks passed in {environment} for "
             f"{plan.target_catalog}.{plan.target_schema}.{plan.target_table}: {','.join(checks)}"

@@ -83,6 +83,7 @@ class WorkflowConfig(BaseModel):
     stage_sequence: list[str] = Field(default_factory=lambda: ["dev", "qe", "stg", "prod"])
     databricks_apply_in_stages: list[str] = Field(default_factory=lambda: ["dev"])
     hil_approval_stages: list[str] = Field(default_factory=lambda: ["qe", "stg", "prod"])
+    hil_approval_for_repo_actions: bool = True
 
 
 class ApprovalConfig(BaseModel):
@@ -122,6 +123,25 @@ class MCPConfig(BaseModel):
     request_timeout_seconds: int = 30
 
 
+class SecurityConfig(BaseModel):
+    """Security guardrails for private deployment profiles."""
+
+    strict_private_mode: bool = False
+    enforce_internal_llm_endpoint: bool = True
+    enforce_internal_mcp_endpoints: bool = True
+    internal_hostname_suffixes: list[str] = Field(
+        default_factory=lambda: [
+            "localhost",
+            "127.0.0.1",
+            ".local",
+            ".internal",
+            ".corp",
+            ".intranet",
+        ]
+    )
+    allow_private_ip_ranges: bool = True
+
+
 class RuntimeConfig(BaseModel):
     """Runtime behavior controls."""
 
@@ -140,6 +160,9 @@ class RuntimeConfig(BaseModel):
     retry_max_delay_seconds: float = 8.0
     retry_backoff_multiplier: float = 2.0
     fail_on_mcp_error: bool = False
+    enable_failure_remediation: bool = True
+    max_failure_remediation_attempts: int = 2
+    require_hil_approval_for_remediation: bool = True
 
 
 class AppConfig(BaseModel):
@@ -158,6 +181,7 @@ class AppConfig(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     prompts: PromptConfig = Field(default_factory=PromptConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
+    security: SecurityConfig = Field(default_factory=SecurityConfig)
     workflow: WorkflowConfig = Field(default_factory=WorkflowConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     learning_store_path: str = "state/learning_memory.json"
@@ -191,6 +215,19 @@ class AppConfig(BaseModel):
             raise ValueError("runtime.retry_max_delay_seconds must be greater than 0.")
         if self.runtime.retry_backoff_multiplier < 1:
             raise ValueError("runtime.retry_backoff_multiplier must be >= 1.")
+        if self.runtime.max_failure_remediation_attempts < 0:
+            raise ValueError("runtime.max_failure_remediation_attempts must be >= 0.")
+
+        if self.security.strict_private_mode:
+            if self.integration_mode != "connected":
+                raise ValueError(
+                    "security.strict_private_mode requires integration_mode='connected' "
+                    "so the agent runs with real enterprise integrations."
+                )
+            if self.prompts.llm_enabled and not self.prompts.llm_endpoint_url:
+                raise ValueError(
+                    "security.strict_private_mode with llm_enabled=true requires prompts.llm_endpoint_url."
+                )
         return self
 
     def is_simulate_mode(self) -> bool:

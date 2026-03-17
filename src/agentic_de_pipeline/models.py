@@ -73,6 +73,7 @@ class PipelineRunResult:
     started_at: datetime
     finished_at: datetime
     dashboard_url: str
+    logs_url: str = ""
 
 
 @dataclass(slots=True)

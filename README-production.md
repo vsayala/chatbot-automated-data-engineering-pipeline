@@ -19,6 +19,7 @@ Deploy this agentic CI/CD system in enterprise environments using:
 - Preflight connectivity validation and fail-fast startup
 - Retry policy for transient external API failures
 - Idempotent work-item processing to avoid duplicate deployments
+- Failure remediation loop with HIL approvals before fix attempts
 
 ## Config strategy
 Use `config/config_connected.yaml` and provide:
@@ -38,6 +39,7 @@ Keeping them separate avoids accidental production calls during development.
 - `integration_mode: "simulate"` means dry-run/mock integration behavior.
 - `integration_mode: "connected"` means real Azure service calls.
 - `deployment_strategy: "dev_first_promotion"` captures your architecture intent explicitly.
+- `security.strict_private_mode: true` enforces private/internal LLM and MCP endpoints.
 
 ### Recommended workflow for your current model
 If Databricks changes are done in DEV and Azure Pipelines handles promotions, keep:

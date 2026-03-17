@@ -9,6 +9,7 @@ from agentic_de_pipeline.adapters.databricks import DatabricksWorkspaceClient
 from agentic_de_pipeline.agents.implementation_agent import ImplementationAgent
 from agentic_de_pipeline.agents.promotion_agent import PromotionAgent
 from agentic_de_pipeline.agents.qa_agent import QAAgent
+from agentic_de_pipeline.agents.remediation_agent import FailureRemediationAgent
 from agentic_de_pipeline.agents.requirement_agent import RequirementAgent
 from agentic_de_pipeline.approvals.human_loop import HumanApprovalService
 from agentic_de_pipeline.config import AppConfig
@@ -34,7 +35,12 @@ def build_orchestrator(config: AppConfig) -> AgenticOrchestrator:
 
     learning_store = LearningStore(config.learning_store_path)
     idempotency_store = IdempotencyStore(config.runtime.idempotency_store_path)
-    prompt_engine = PromptEngine(config.prompts, config.logging.log_dir, retry_policy=retry_policy)
+    prompt_engine = PromptEngine(
+        config.prompts,
+        config.logging.log_dir,
+        retry_policy=retry_policy,
+        security_config=config.security,
+    )
     mcp_router = MCPRouter(config.mcp, config.logging.log_dir)
     preflight_validator = PreflightValidator(config, mcp_router, retry_policy)
 
@@ -55,6 +61,7 @@ def build_orchestrator(config: AppConfig) -> AgenticOrchestrator:
     )
     implementation_agent = ImplementationAgent(config.logging.log_dir)
     qa_agent = QAAgent(config.logging.log_dir)
+    remediation_agent = FailureRemediationAgent(config.logging.log_dir, prompt_engine)
     promotion_agent = PromotionAgent(config.logging.log_dir)
     approval_service = HumanApprovalService(config.approvals, config.logging.log_dir)
     developer_workflow = DeveloperWorkflowService(repos_client, config.logging.log_dir)
@@ -75,6 +82,11 @@ def build_orchestrator(config: AppConfig) -> AgenticOrchestrator:
         require_preflight_before_run=config.runtime.require_preflight_before_run,
         enable_idempotency=config.runtime.enable_idempotency,
         fail_fast=config.runtime.fail_fast,
+        remediation_agent=remediation_agent,
+        enable_failure_remediation=config.runtime.enable_failure_remediation,
+        max_failure_remediation_attempts=config.runtime.max_failure_remediation_attempts,
+        require_hil_approval_for_remediation=config.runtime.require_hil_approval_for_remediation,
+        require_hil_approval_for_repo_actions=config.workflow.hil_approval_for_repo_actions,
         max_work_items_per_run=config.runtime.max_work_items_per_run,
         stage_sequence=config.workflow.stage_sequence,
         databricks_apply_in_stages=config.workflow.databricks_apply_in_stages,

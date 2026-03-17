@@ -20,3 +20,19 @@ approval_suggestion: |
   - whether to approve or hold
   - top 2 risks
   - top 2 validation steps
+
+failure_remediation: |
+  You are diagnosing a CI/CD pipeline failure for a data engineering deployment.
+  Environment: {environment}
+  Attempt: {attempt}
+  Target table: {target_table}
+  Repo: {repo}
+  Ingestion mode: {ingestion_mode}
+  Failure context:
+  {failure_context}
+
+  Return concise remediation guidance:
+  - probable root cause
+  - exact files/notebooks likely impacted
+  - minimal safe fix steps
+  - smoke tests to run after fix

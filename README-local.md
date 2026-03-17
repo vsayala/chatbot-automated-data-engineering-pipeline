@@ -20,6 +20,7 @@ This project implements a local-first, human-in-the-loop agentic workflow for da
 9. Runs preflight connectivity checks before execution.
 10. Uses retries + idempotency to reduce transient failures and duplicate processing.
 11. Requests HIL clarifications for incomplete PBIs/stories/bugs and records answers in DevOps discussion comments.
+12. Supports failure remediation loop (analyze pipeline failure, propose fix, HIL approve remediation, rerun pipeline/QA).
 
 ## Architecture (Local Runtime)
 ```text
@@ -45,6 +46,7 @@ Learning Store (state/learning_memory.json)
 Core control-plane keys:
 - `integration_mode: "simulate"` for safe dry-run integration behavior
 - `deployment_strategy: "dev_first_promotion"` for your Dev->QE->STG->PROD flow
+- `security.strict_private_mode` for locked-down internal endpoint enforcement (usually enabled in connected profile)
 
 You can provide all service links directly:
 - Azure DevOps: `organization_url`, `project`, `board_url`
@@ -135,6 +137,8 @@ Each integration accepts either:
 - `runtime.require_preflight_before_run: true` => fail fast when service connectivity is broken.
 - `runtime.enable_idempotency: true` => prevent duplicate work-item processing.
 - `runtime.retry_*` => retry policy for transient network failures.
+- `runtime.enable_failure_remediation: true` => attempt automated recovery on pipeline failure.
+- `runtime.max_failure_remediation_attempts` => retry budget for fix-and-rerun loop.
 
 ## Logging
 - Master log: `logs/project_master.log`

@@ -51,6 +51,38 @@ class DeveloperWorkflowService:
             self.logger.exception("developer_workflow_failed work_item_id=%s", work_item.id)
             return "failed", str(exc)
 
+    def apply_remediation(
+        self,
+        work_item: WorkItem,
+        plan: RequirementPlan,
+        environment: str,
+        suggestion: str,
+        attempt: int,
+    ) -> tuple[str, str]:
+        """Apply remediation artifact and rerun developer validation steps."""
+        try:
+            artifact = self._write_remediation_artifact(work_item, plan, environment, suggestion, attempt)
+            tests_passed, test_output = self.repos_client.run_basic_tests(plan.target_repo)
+            if not tests_passed:
+                return "failed", f"remediation tests failed: {test_output}"
+            branch_name = self.repos_client.commit_and_push(work_item, plan.target_repo)
+            detail = f"remediation_artifact={artifact}; branch={branch_name}; tests=passed"
+            self.logger.info(
+                "developer_remediation_completed work_item_id=%s environment=%s attempt=%s",
+                work_item.id,
+                environment,
+                attempt,
+            )
+            return "succeeded", detail
+        except Exception as exc:  # pylint: disable=broad-except
+            self.logger.exception(
+                "developer_remediation_failed work_item_id=%s environment=%s attempt=%s",
+                work_item.id,
+                environment,
+                attempt,
+            )
+            return "failed", str(exc)
+
     @staticmethod
     def _write_work_item_change_stub(work_item: WorkItem, plan: RequirementPlan) -> str:
         """Create local code artifact documenting automated work-item changes."""
@@ -68,6 +100,34 @@ class DeveloperWorkflowService:
                     f"Target Table: {plan.target_catalog}.{plan.target_schema}.{plan.target_table}",
                     f"Ingestion Mode: {plan.ingestion_mode}",
                     f"Source Types: {', '.join(plan.source_types)}",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        return str(file_path)
+
+    @staticmethod
+    def _write_remediation_artifact(
+        work_item: WorkItem,
+        plan: RequirementPlan,
+        environment: str,
+        suggestion: str,
+        attempt: int,
+    ) -> str:
+        """Write remediation note artifact for traceability and review."""
+        folder = Path("generated_changes")
+        folder.mkdir(parents=True, exist_ok=True)
+        file_path = folder / f"remediation_{work_item.id}_{environment}_attempt_{attempt}.md"
+        file_path.write_text(
+            "\n".join(
+                [
+                    f"# Remediation for Work Item {work_item.id}",
+                    f"Environment: {environment}",
+                    f"Attempt: {attempt}",
+                    f"Repo: {plan.target_repo}",
+                    f"Target Table: {plan.target_catalog}.{plan.target_schema}.{plan.target_table}",
+                    "Suggested Fix:",
+                    suggestion,
                 ]
             ),
             encoding="utf-8",

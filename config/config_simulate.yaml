@@ -69,10 +69,18 @@ mcp:
   server_tokens: {}
   request_timeout_seconds: 30
 
+security:
+  strict_private_mode: false
+  enforce_internal_llm_endpoint: true
+  enforce_internal_mcp_endpoints: true
+  internal_hostname_suffixes: ["localhost", "127.0.0.1", ".local", ".internal", ".corp", ".intranet"]
+  allow_private_ip_ranges: true
+
 workflow:
   stage_sequence: ["dev", "qe", "stg", "prod"]
   databricks_apply_in_stages: ["dev"]
   hil_approval_stages: ["qe", "stg", "prod"]
+  hil_approval_for_repo_actions: true
 
 runtime:
   poll_interval_seconds: 30
@@ -90,5 +98,8 @@ runtime:
   retry_max_delay_seconds: 8.0
   retry_backoff_multiplier: 2.0
   fail_on_mcp_error: false
+  enable_failure_remediation: true
+  max_failure_remediation_attempts: 2
+  require_hil_approval_for_remediation: true
 
 learning_store_path: "state/learning_memory.json"

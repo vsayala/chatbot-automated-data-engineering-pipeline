@@ -57,7 +57,7 @@ prompts:
   enabled: true
   templates_path: "config/prompts.yaml"
   llm_enabled: true
-  llm_endpoint_url: "https://your-llm-host/v1/chat/completions"
+  llm_endpoint_url: "http://127.0.0.1:11434/v1/chat/completions"
   llm_model: "gpt-4o-mini"
   llm_api_key_env: "LLM_API_KEY"
   llm_api_key: ""
@@ -72,10 +72,18 @@ mcp:
     databricks_mcp: ""
   request_timeout_seconds: 30
 
+security:
+  strict_private_mode: true
+  enforce_internal_llm_endpoint: true
+  enforce_internal_mcp_endpoints: true
+  internal_hostname_suffixes: ["localhost", "127.0.0.1", ".local", ".internal", ".corp", ".intranet"]
+  allow_private_ip_ranges: true
+
 workflow:
   stage_sequence: ["dev", "qe", "stg", "prod"]
   databricks_apply_in_stages: ["dev"]
   hil_approval_stages: ["qe", "stg", "prod"]
+  hil_approval_for_repo_actions: true
 
 runtime:
   poll_interval_seconds: 60
@@ -93,5 +101,8 @@ runtime:
   retry_max_delay_seconds: 8.0
   retry_backoff_multiplier: 2.0
   fail_on_mcp_error: true
+  enable_failure_remediation: true
+  max_failure_remediation_attempts: 2
+  require_hil_approval_for_remediation: true
 
 learning_store_path: "state/learning_memory.json"

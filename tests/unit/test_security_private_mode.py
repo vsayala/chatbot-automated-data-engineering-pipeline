@@ -1,0 +1,37 @@
+"""Unit tests for strict private mode behavior."""
+
+from __future__ import annotations
+
+import pytest
+
+from agentic_de_pipeline.config import AppConfig
+from agentic_de_pipeline.services.mcp_router import MCPRouter
+from agentic_de_pipeline.services.preflight import PreflightValidator
+from agentic_de_pipeline.utils.retry import RetryPolicy
+
+
+def test_strict_private_mode_requires_connected_integration() -> None:
+    """Configuration should reject strict private mode with simulate integration mode."""
+    with pytest.raises(ValueError):
+        AppConfig.model_validate(
+            {
+                "integration_mode": "simulate",
+                "security": {"strict_private_mode": True},
+                "databricks": {"workspace_urls": {"dev": "https://adb-dev.example.net"}},
+            }
+        )
+
+
+def test_preflight_blocks_non_internal_llm_in_strict_mode(test_config) -> None:
+    """Preflight should fail when strict mode uses external LLM endpoint."""
+    test_config.integration_mode = "connected"
+    test_config.security.strict_private_mode = True
+    test_config.prompts.llm_enabled = True
+    test_config.prompts.llm_endpoint_url = "https://external-llm.example.com/v1/chat/completions"
+    validator = PreflightValidator(
+        config=test_config,
+        mcp_router=MCPRouter(test_config.mcp, test_config.logging.log_dir),
+        retry_policy=RetryPolicy(attempts=1),
+    )
+
+    assert validator._check_llm() == "error(llm_endpoint_not_internal)"  # noqa: SLF001

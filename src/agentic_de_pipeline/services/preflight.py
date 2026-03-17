@@ -10,6 +10,7 @@ from pathlib import Path
 from agentic_de_pipeline.config import AppConfig
 from agentic_de_pipeline.logging_utils import get_module_logger
 from agentic_de_pipeline.services.mcp_router import MCPRouter
+from agentic_de_pipeline.utils.network import is_internal_endpoint
 from agentic_de_pipeline.utils.retry import RetryPolicy, run_with_retry
 from agentic_de_pipeline.utils.secrets import resolve_secret
 
@@ -36,6 +37,7 @@ class PreflightValidator:
         checks["databricks"] = self._check_databricks()
         checks["llm"] = self._check_llm()
         checks["mcp"] = self._check_mcp()
+        checks["security"] = self._check_security()
         return checks
 
     def validate_or_raise(self) -> dict[str, str]:
@@ -154,6 +156,14 @@ class PreflightValidator:
         if not self.config.prompts.llm_endpoint_url:
             return "error(llm_endpoint_missing)"
 
+        if self.config.security.strict_private_mode and self.config.security.enforce_internal_llm_endpoint:
+            if not is_internal_endpoint(
+                endpoint_url=self.config.prompts.llm_endpoint_url,
+                internal_hostname_suffixes=self.config.security.internal_hostname_suffixes,
+                allow_private_ip_ranges=self.config.security.allow_private_ip_ranges,
+            ):
+                return "error(llm_endpoint_not_internal)"
+
         _ = resolve_secret(
             direct_value=self.config.prompts.llm_api_key,
             env_name=self.config.prompts.llm_api_key_env,
@@ -163,10 +173,29 @@ class PreflightValidator:
         return "ok"
 
     def _check_mcp(self) -> str:
+        if self.config.mcp.enabled and self.config.security.strict_private_mode and self.config.security.enforce_internal_mcp_endpoints:
+            non_internal = []
+            for name, endpoint in self.config.mcp.servers.items():
+                if not is_internal_endpoint(
+                    endpoint_url=endpoint,
+                    internal_hostname_suffixes=self.config.security.internal_hostname_suffixes,
+                    allow_private_ip_ranges=self.config.security.allow_private_ip_ranges,
+                ):
+                    non_internal.append(name)
+            if non_internal:
+                return f"error(mcp_endpoints_not_internal:{','.join(non_internal)})"
+
         status = self.mcp_router.ping_all(self.retry_policy)
         if not self.config.mcp.enabled:
             return "ok(disabled)"
         failures = [name for name, value in status.items() if not value.startswith("reachable")]
         if failures:
             return f"error(unreachable_servers:{','.join(failures)})"
+        return "ok"
+
+    def _check_security(self) -> str:
+        if not self.config.security.strict_private_mode:
+            return "ok(disabled)"
+        if self.config.integration_mode != "connected":
+            return "error(strict_private_requires_connected_mode)"
         return "ok"

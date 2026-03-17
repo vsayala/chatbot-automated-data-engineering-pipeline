@@ -33,7 +33,11 @@ class DeveloperWorkflowService:
             branch_name = self.repos_client.prepare_branch(work_item, plan.target_repo)
             change_file = "dry-run/no-change-file"
             if not self.repos_client.repo_config.dry_run:
-                change_file = self._write_work_item_change_stub(work_item, plan)
+                change_file = self._write_work_item_change_stub(
+                    work_item=work_item,
+                    plan=plan,
+                    repo_path=self.repos_client.get_checkout_path(plan.target_repo),
+                )
 
             tests_passed, test_output = self.repos_client.run_basic_tests(plan.target_repo)
             if not tests_passed:
@@ -61,7 +65,14 @@ class DeveloperWorkflowService:
     ) -> tuple[str, str]:
         """Apply remediation artifact and rerun developer validation steps."""
         try:
-            artifact = self._write_remediation_artifact(work_item, plan, environment, suggestion, attempt)
+            artifact = self._write_remediation_artifact(
+                work_item=work_item,
+                plan=plan,
+                environment=environment,
+                suggestion=suggestion,
+                attempt=attempt,
+                repo_path=self.repos_client.get_checkout_path(plan.target_repo),
+            )
             tests_passed, test_output = self.repos_client.run_basic_tests(plan.target_repo)
             if not tests_passed:
                 return "failed", f"remediation tests failed: {test_output}"
@@ -84,9 +95,13 @@ class DeveloperWorkflowService:
             return "failed", str(exc)
 
     @staticmethod
-    def _write_work_item_change_stub(work_item: WorkItem, plan: RequirementPlan) -> str:
+    def _write_work_item_change_stub(
+        work_item: WorkItem,
+        plan: RequirementPlan,
+        repo_path: Path,
+    ) -> str:
         """Create local code artifact documenting automated work-item changes."""
-        folder = Path("generated_changes")
+        folder = repo_path / "generated_changes"
         folder.mkdir(parents=True, exist_ok=True)
         file_path = folder / f"work_item_{work_item.id}.md"
         file_path.write_text(
@@ -113,9 +128,10 @@ class DeveloperWorkflowService:
         environment: str,
         suggestion: str,
         attempt: int,
+        repo_path: Path,
     ) -> str:
         """Write remediation note artifact for traceability and review."""
-        folder = Path("generated_changes")
+        folder = repo_path / "generated_changes"
         folder.mkdir(parents=True, exist_ok=True)
         file_path = folder / f"remediation_{work_item.id}_{environment}_attempt_{attempt}.md"
         file_path.write_text(

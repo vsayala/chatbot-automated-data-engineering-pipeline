@@ -142,6 +142,19 @@ class SecurityConfig(BaseModel):
         ]
     )
     allow_private_ip_ranges: bool = True
+    enforce_allowed_egress_hosts: bool = True
+    allowed_egress_hostname_suffixes: list[str] = Field(
+        default_factory=lambda: [
+            "dev.azure.com",
+            ".azuredatabricks.net",
+            "localhost",
+            "127.0.0.1",
+            ".local",
+            ".internal",
+            ".corp",
+            ".intranet",
+        ]
+    )
 
 
 class RuntimeConfig(BaseModel):

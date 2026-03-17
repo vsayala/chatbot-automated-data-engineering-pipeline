@@ -251,6 +251,10 @@ class AzureReposClient:
             return self.checkout_path
         return (self.checkout_root / repo_name).resolve()
 
+    def get_checkout_path(self, repo_name: str) -> Path:
+        """Return local checkout path for the given repository name."""
+        return self._resolve_checkout_path(repo_name)
+
     def _build_branch_name(self, work_item_id: int, title: str) -> str:
         slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
         slug = slug[:35] if slug else "work-item"

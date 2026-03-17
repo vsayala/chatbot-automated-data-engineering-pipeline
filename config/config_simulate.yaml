@@ -77,6 +77,16 @@ security:
   enforce_internal_mcp_endpoints: true
   internal_hostname_suffixes: ["localhost", "127.0.0.1", ".local", ".internal", ".corp", ".intranet"]
   allow_private_ip_ranges: true
+  enforce_allowed_egress_hosts: true
+  allowed_egress_hostname_suffixes:
+    - "dev.azure.com"
+    - ".azuredatabricks.net"
+    - "localhost"
+    - "127.0.0.1"
+    - ".local"
+    - ".internal"
+    - ".corp"
+    - ".intranet"
 
 workflow:
   stage_sequence: ["dev", "qe", "stg", "prod"]

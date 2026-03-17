@@ -46,3 +46,25 @@ def is_internal_endpoint(
         or ip.is_link_local
         or ip.is_reserved
     )
+
+
+def get_hostname(endpoint_url: str) -> str:
+    """Extract lowercase hostname from URL or return empty string."""
+    parsed = urlparse(endpoint_url)
+    return (parsed.hostname or "").strip().lower()
+
+
+def matches_hostname_suffixes(hostname: str, suffixes: list[str]) -> bool:
+    """Return True when hostname matches one of configured suffixes."""
+    host = hostname.strip().lower()
+    if not host:
+        return False
+    for suffix in suffixes:
+        clean = suffix.strip().lower()
+        if not clean:
+            continue
+        if clean.startswith(".") and host.endswith(clean):
+            return True
+        if host == clean:
+            return True
+    return False

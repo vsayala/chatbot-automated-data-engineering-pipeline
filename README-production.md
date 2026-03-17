@@ -92,6 +92,7 @@ Cross-cutting:
 - `GET /approvals/pending-with-suggestions`
 - `GET /approvals/{request_id}/suggestion`
 - `GET /preflight/run`
+- Browser HIL console at `GET /ui` (chat + approvals + clarifications + active work-items)
 
 ## In-house LLM recommendation
 For private enterprise usage, run local inference (e.g., Ollama) and use:

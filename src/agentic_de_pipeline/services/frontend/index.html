@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agentic AI HIL Console</title>
+    <link rel="stylesheet" href="/ui/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Agentic AI HIL Console</h1>
+      <div class="header-actions">
+        <button id="btn-preflight">Run Preflight</button>
+        <button id="btn-process">Process Next Work Item</button>
+        <button id="btn-refresh-all">Refresh All</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel left">
+        <h2>Active Work Items</h2>
+        <div id="active-items" class="list"></div>
+      </section>
+
+      <section class="panel center">
+        <h2>HIL Chat</h2>
+        <div id="chat-log" class="chat-log"></div>
+        <div class="chat-input-row">
+          <input id="chat-input" placeholder="Ask agent, request status, or guidance..." />
+          <button id="btn-chat-send">Send</button>
+        </div>
+      </section>
+
+      <section class="panel right">
+        <h2>Approvals</h2>
+        <div id="approvals" class="list"></div>
+        <h2>Clarifications</h2>
+        <div id="clarifications" class="list"></div>
+      </section>
+    </main>
+
+    <script src="/ui/app.js"></script>
+  </body>
+</html>

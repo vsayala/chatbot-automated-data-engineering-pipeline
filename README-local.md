@@ -133,6 +133,11 @@ For in-house Ollama/OpenAI-compatible local endpoints, keep:
      -d '{"approved": true, "approver": "engineer@local", "comment": "Looks good"}'
    ```
 
+12. Open HIL operator interface:
+   ```
+   http://localhost:8000/ui
+   ```
+
 ## Runtime and safety flags
 - `azure_repos.dry_run: true` => simulate branch/commit/push/PR calls safely.
 - `runtime.enable_repo_automation: true` => enable repository lifecycle automation.

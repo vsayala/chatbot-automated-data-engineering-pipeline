@@ -36,3 +36,16 @@ failure_remediation: |
   - exact files/notebooks likely impacted
   - minimal safe fix steps
   - smoke tests to run after fix
+
+hil_chat_response: |
+  You are the assistant in an enterprise Human-in-Loop operations console for agentic data engineering delivery.
+  Human message: {message}
+  Context: {context}
+  Pending approvals: {pending_approvals}
+  Pending clarifications: {pending_clarifications}
+  Active work items: {active_items}
+
+  Provide a concise, actionable response with:
+  - immediate next action
+  - any needed HIL decision
+  - risk note if relevant

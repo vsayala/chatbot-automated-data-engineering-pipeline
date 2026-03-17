@@ -14,6 +14,13 @@ class DatabricksNotebookTransformer(RemediationTransformer):
 
     _FAILURE_HINTS = ("analysisexception", "schema mismatch", "delta", "databricks", "notebook")
     _CONF_LINE = 'spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")'
+    _SPARK_BOOTSTRAP = [
+        "try:",
+        "    spark",
+        "except NameError:",
+        "    from pyspark.sql import SparkSession",
+        "    spark = SparkSession.builder.getOrCreate()",
+    ]
 
     def can_transform(self, context: RemediationContext) -> bool:
         failure_context = context.failure_context.lower()
@@ -29,8 +36,6 @@ class DatabricksNotebookTransformer(RemediationTransformer):
             except UnicodeDecodeError:
                 continue
             if self._CONF_LINE in content:
-                continue
-            if "spark" not in content:
                 continue
             updated = self._inject_auto_merge_config(content)
             if updated == content:
@@ -68,7 +73,9 @@ class DatabricksNotebookTransformer(RemediationTransformer):
         snippet = [
             "",
             "# Added by remediation plugin for Delta schema evolution compatibility.",
+            *self._SPARK_BOOTSTRAP,
             self._CONF_LINE,
-            "",
         ]
+        if lines and lines[-1].strip():
+            snippet.append("")
         return "\n".join(lines[:insert_at] + snippet + lines[insert_at:]) + ("\n" if content.endswith("\n") else "")

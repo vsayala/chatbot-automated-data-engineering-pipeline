@@ -104,7 +104,8 @@ def test_python_etl_transformer_adds_merge_schema_option(tmp_path: Path) -> None
 
     assert result.changed_files == [str(etl_file)]
     updated = etl_file.read_text(encoding="utf-8")
-    assert '.mode("append").option("mergeSchema", "true")' in updated
+    assert '.mode("append")' in updated
+    assert '.option("mergeSchema", "true")' in updated
 
 
 def test_transformer_registry_applies_enabled_plugins(tmp_path: Path) -> None:

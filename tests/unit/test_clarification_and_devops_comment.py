@@ -20,8 +20,8 @@ def test_clarification_request_auto_mode_returns_answers(test_config) -> None:
     assert len(clarification.answers) == 2
 
 
-def test_local_mode_can_record_work_item_discussion_comment(test_config) -> None:
-    """Local mode comment update should not fail and return local marker."""
+def test_simulate_mode_can_record_work_item_discussion_comment(test_config) -> None:
+    """Simulate mode comment update should not fail and return local marker."""
     client = AzureDevOpsClient(test_config)
     comment_id = client.add_work_item_discussion_comment(123, "Test clarification note")
 

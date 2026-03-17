@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 from typing import Any
 
 import yaml
@@ -145,7 +146,10 @@ class AppConfig(BaseModel):
     """Top-level application configuration schema."""
 
     app_name: str = "agentic-data-engineering-cicd"
-    local_mode: bool = True
+    integration_mode: Literal["simulate", "connected"] = "simulate"
+    deployment_strategy: str = "dev_first_promotion"
+    # Backward-compatible alias for older configs; prefer integration_mode.
+    local_mode: bool | None = None
     azure_devops: AzureDevOpsConfig = Field(default_factory=AzureDevOpsConfig)
     azure_pipelines: AzurePipelinesConfig = Field(default_factory=AzurePipelinesConfig)
     azure_repos: AzureReposConfig = Field(default_factory=AzureReposConfig)
@@ -161,6 +165,9 @@ class AppConfig(BaseModel):
     @model_validator(mode="after")
     def validate_cross_field_settings(self) -> "AppConfig":
         """Validate cross-field settings for safer runtime behavior."""
+        if self.local_mode is not None:
+            self.integration_mode = "simulate" if self.local_mode else "connected"
+
         stage_set = set(self.workflow.stage_sequence)
         missing_databricks_stages = set(self.workflow.databricks_apply_in_stages) - stage_set
         if missing_databricks_stages:
@@ -185,6 +192,10 @@ class AppConfig(BaseModel):
         if self.runtime.retry_backoff_multiplier < 1:
             raise ValueError("runtime.retry_backoff_multiplier must be >= 1.")
         return self
+
+    def is_simulate_mode(self) -> bool:
+        """Return True when running in simulation integration mode."""
+        return self.integration_mode == "simulate"
 
 
 def load_config(config_path: str | Path) -> AppConfig:

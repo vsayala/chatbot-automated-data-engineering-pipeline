@@ -1,5 +1,6 @@
 app_name: "agentic-data-engineering-cicd"
-local_mode: true
+integration_mode: "simulate"
+deployment_strategy: "dev_first_promotion"
 
 azure_devops:
   organization_url: "https://dev.azure.com/your-org"

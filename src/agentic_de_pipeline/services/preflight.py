@@ -47,7 +47,7 @@ class PreflightValidator:
         return checks
 
     def _check_azure_devops(self) -> str:
-        if self.config.local_mode:
+        if self.config.is_simulate_mode():
             mock_path = Path(self.config.azure_devops.mock_data_path)
             return "ok(local_mock_present)" if mock_path.exists() else "error(mock_data_missing)"
 
@@ -94,8 +94,8 @@ class PreflightValidator:
         return "ok"
 
     def _check_azure_pipelines(self) -> str:
-        if self.config.local_mode:
-            return "ok(local_mode)"
+        if self.config.is_simulate_mode():
+            return "ok(simulate_mode)"
 
         pat = resolve_secret(
             direct_value=self.config.azure_pipelines.personal_access_token,
@@ -125,8 +125,8 @@ class PreflightValidator:
         if missing:
             return f"error(missing_workspace_urls:{','.join(missing)})"
 
-        if self.config.local_mode:
-            return "ok(local_mode)"
+        if self.config.is_simulate_mode():
+            return "ok(simulate_mode)"
 
         token = resolve_secret(
             direct_value=self.config.databricks.token,

@@ -14,7 +14,8 @@ def test_config(tmp_path: Path) -> AppConfig:
     """Build isolated local config for tests."""
     return AppConfig.model_validate(
         {
-            "local_mode": True,
+            "integration_mode": "simulate",
+            "deployment_strategy": "dev_first_promotion",
             "azure_devops": {
                 "organization_url": "https://dev.azure.com/test-org",
                 "project": "test-project",

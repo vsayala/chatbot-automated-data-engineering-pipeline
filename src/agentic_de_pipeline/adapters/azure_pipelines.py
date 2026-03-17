@@ -34,7 +34,7 @@ class AzurePipelinesClient:
     def run_cicd(self, environment: str, plan: RequirementPlan) -> PipelineRunResult:
         """Run CI/CD pipeline and return run metadata."""
         with timed_operation(self.logger, f"run_cicd_{environment}"):
-            if self.config.local_mode:
+            if self.config.is_simulate_mode():
                 return self._simulate_pipeline(environment, plan)
             return self._trigger_real_pipeline(environment, plan)
 

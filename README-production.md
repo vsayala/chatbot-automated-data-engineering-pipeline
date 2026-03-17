@@ -34,6 +34,11 @@ Use `config/config_prod.yaml` and provide:
 
 Keeping them separate avoids accidental production calls during development.
 
+### Runtime profile model (updated)
+- `integration_mode: "simulate"` means dry-run/mock integration behavior.
+- `integration_mode: "connected"` means real Azure service calls.
+- `deployment_strategy: "dev_first_promotion"` captures your architecture intent explicitly.
+
 ### Recommended workflow for your current model
 If Databricks changes are done in DEV and Azure Pipelines handles promotions, keep:
 - `workflow.stage_sequence: ["dev","qe","stg","prod"]`

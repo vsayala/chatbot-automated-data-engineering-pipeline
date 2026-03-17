@@ -39,7 +39,7 @@ class DatabricksWorkspaceClient:
                     f"No Databricks workspace URL configured for stage '{environment}'. "
                     "Update databricks.workspace_urls or remove stage from workflow.databricks_apply_in_stages."
                 )
-            if self.config.local_mode:
+            if self.config.is_simulate_mode():
                 details = self._simulate_apply(environment=environment, plan=plan)
                 status = "succeeded"
             else:

@@ -33,7 +33,7 @@ class AzureDevOpsClient:
     def fetch_open_work_items(self, limit: int = 5) -> list[WorkItem]:
         """Fetch work items either from local mock or Azure DevOps."""
         with timed_operation(self.logger, "fetch_open_work_items"):
-            if self.config.local_mode:
+            if self.config.is_simulate_mode():
                 return self._load_mock_work_items(limit=limit)
             return self._fetch_from_azure_devops(limit=limit)
 
@@ -165,7 +165,7 @@ class AzureDevOpsClient:
 
     def add_work_item_discussion_comment(self, work_item_id: int, comment: str) -> str:
         """Add clarification/comment record into Azure DevOps work item discussion."""
-        if self.config.local_mode:
+        if self.config.is_simulate_mode():
             self.logger.info("local_discussion_comment_saved work_item_id=%s comment=%s", work_item_id, comment)
             return "local-comment-saved"
 

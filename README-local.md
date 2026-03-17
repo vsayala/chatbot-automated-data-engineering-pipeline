@@ -42,6 +42,10 @@ Learning Store (state/learning_memory.json)
 ```
 
 ## Config you need (`config/config_local.yaml`)
+Core control-plane keys:
+- `integration_mode: "simulate"` for safe dry-run integration behavior
+- `deployment_strategy: "dev_first_promotion"` for your Dev->QE->STG->PROD flow
+
 You can provide all service links directly:
 - Azure DevOps: `organization_url`, `project`, `board_url`
 - Azure Repos: `repository_url`, `repository_name`

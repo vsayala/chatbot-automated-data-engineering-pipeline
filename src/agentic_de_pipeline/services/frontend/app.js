@@ -18,7 +18,16 @@ function appendChat(role, text) {
   const log = document.getElementById('chat-log');
   const box = document.createElement('div');
   box.className = 'chat-msg';
-  box.innerHTML = `<div class="role">${role}</div><div>${text}</div>`;
+
+  const roleDiv = document.createElement('div');
+  roleDiv.className = 'role';
+  roleDiv.textContent = role;
+
+  const textDiv = document.createElement('div');
+  textDiv.textContent = text;
+
+  box.appendChild(roleDiv);
+  box.appendChild(textDiv);
   log.appendChild(box);
   log.scrollTop = log.scrollHeight;
 }

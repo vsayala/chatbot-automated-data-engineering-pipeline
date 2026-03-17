@@ -41,7 +41,7 @@ Human Approval Service (QE/STG/PROD gates via API/Console)
 Learning Store (state/learning_memory.json)
 ```
 
-## Config you need (`config/config_local.yaml`)
+## Config you need (`config/config_simulate.yaml`)
 Core control-plane keys:
 - `integration_mode: "simulate"` for safe dry-run integration behavior
 - `deployment_strategy: "dev_first_promotion"` for your Dev->QE->STG->PROD flow
@@ -80,17 +80,17 @@ Each integration accepts either:
 
 3. Process one work item:
    ```bash
-   python3 main.py --config config/config_local.yaml run-once
+   python3 main.py --config config/config_simulate.yaml run-once
    ```
 
 4. Run preflight checks only:
    ```bash
-   python3 main.py --config config/config_local.yaml preflight
+   python3 main.py --config config/config_simulate.yaml preflight
    ```
 
 5. Start chatbot approval API:
    ```bash
-   python3 main.py --config config/config_local.yaml serve-chat --host 0.0.0.0 --port 8000
+   python3 main.py --config config/config_simulate.yaml serve-chat --host 0.0.0.0 --port 8000
    ```
 
 6. Trigger processing via API:

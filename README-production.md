@@ -21,7 +21,7 @@ Deploy this agentic CI/CD system in enterprise environments using:
 - Idempotent work-item processing to avoid duplicate deployments
 
 ## Config strategy
-Use `config/config_prod.yaml` and provide:
+Use `config/config_connected.yaml` and provide:
 - DevOps board URL + organization/project
 - Repos URL + repository
 - Pipelines URL/prefix
@@ -29,8 +29,8 @@ Use `config/config_prod.yaml` and provide:
 - Prompt and MCP configuration
 
 ### Why two YAML files?
-- `config/config_local.yaml` is for safe local runs, mock/testing, and quick iteration.
-- `config/config_prod.yaml` is for real service endpoints, stricter approvals, and hosted LLM/MCP wiring.
+- `config/config_simulate.yaml` is for safe dry-run/mock iterations.
+- `config/config_connected.yaml` is for real service endpoints, stricter approvals, and hosted LLM/MCP wiring.
 
 Keeping them separate avoids accidental production calls during development.
 

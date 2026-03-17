@@ -164,12 +164,13 @@ class PreflightValidator:
             ):
                 return "error(llm_endpoint_not_internal)"
 
-        _ = resolve_secret(
-            direct_value=self.config.prompts.llm_api_key,
-            env_name=self.config.prompts.llm_api_key_env,
-            secret_label="LLM API key",
-            required=True,
-        )
+        if self.config.prompts.llm_requires_api_key:
+            _ = resolve_secret(
+                direct_value=self.config.prompts.llm_api_key,
+                env_name=self.config.prompts.llm_api_key_env,
+                secret_label="LLM API key",
+                required=True,
+            )
         return "ok"
 
     def _check_mcp(self) -> str:

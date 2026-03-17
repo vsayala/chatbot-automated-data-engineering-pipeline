@@ -93,6 +93,12 @@ Cross-cutting:
 - `GET /approvals/{request_id}/suggestion`
 - `GET /preflight/run`
 
+## In-house LLM recommendation
+For private enterprise usage, run local inference (e.g., Ollama) and use:
+- `prompts.llm_provider: "ollama"`
+- internal endpoint such as `http://127.0.0.1:11434/v1/chat/completions`
+- `prompts.llm_requires_api_key: false`
+
 ## Example secure deployment notes (commented for activation)
 ```yaml
 # INSTRUCTION: Activate in your infra-as-code repository.

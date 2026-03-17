@@ -58,7 +58,9 @@ prompts:
   templates_path: "config/prompts.yaml"
   llm_enabled: true
   llm_endpoint_url: "http://127.0.0.1:11434/v1/chat/completions"
-  llm_model: "gpt-4o-mini"
+  llm_provider: "ollama"
+  llm_model: "qwen2.5:14b-instruct" # Use larger models like llama3.1:70b where GPU budget allows.
+  llm_requires_api_key: false
   llm_api_key_env: "LLM_API_KEY"
   llm_api_key: ""
 

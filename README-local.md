@@ -67,6 +67,10 @@ Each integration accepts either:
 - direct token in config (example `personal_access_token`, `token`), or
 - env var reference (`*_env` fields).
 
+For in-house Ollama/OpenAI-compatible local endpoints, keep:
+- `prompts.llm_provider: "ollama"`
+- `prompts.llm_requires_api_key: false`
+
 > Recommended for real usage: keep token fields empty and use environment variables.
 
 ## Local Setup

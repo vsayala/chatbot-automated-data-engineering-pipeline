@@ -63,6 +63,9 @@ def test_config(tmp_path: Path) -> AppConfig:
                 "enabled": True,
                 "templates_path": "config/prompts.yaml",
                 "llm_enabled": False,
+                "llm_provider": "ollama",
+                "llm_model": "qwen2.5:14b-instruct",
+                "llm_requires_api_key": False,
             },
             "mcp": {
                 "enabled": False,

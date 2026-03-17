@@ -59,7 +59,9 @@ prompts:
   templates_path: "config/prompts.yaml"
   llm_enabled: false
   llm_endpoint_url: ""
-  llm_model: "gpt-4o-mini"
+  llm_provider: "ollama"
+  llm_model: "qwen2.5:14b-instruct"
+  llm_requires_api_key: false
   llm_api_key_env: "LLM_API_KEY"
   llm_api_key: ""
 

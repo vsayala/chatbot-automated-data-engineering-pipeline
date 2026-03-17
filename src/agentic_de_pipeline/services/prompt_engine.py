@@ -75,13 +75,6 @@ class PromptEngine:
 
         import urllib.request
 
-        api_key = resolve_secret(
-            direct_value=self.config.llm_api_key,
-            env_name=self.config.llm_api_key_env,
-            secret_label="LLM API key",
-            required=True,
-        )
-
         payload = {
             "model": self.config.llm_model,
             "messages": [
@@ -89,10 +82,15 @@ class PromptEngine:
                 {"role": "user", "content": prompt},
             ],
         }
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if self.config.llm_requires_api_key:
+            api_key = resolve_secret(
+                direct_value=self.config.llm_api_key,
+                env_name=self.config.llm_api_key_env,
+                secret_label="LLM API key",
+                required=True,
+            )
+            headers["Authorization"] = f"Bearer {api_key}"
         req = urllib.request.Request(
             self.config.llm_endpoint_url,
             data=json.dumps(payload).encode("utf-8"),

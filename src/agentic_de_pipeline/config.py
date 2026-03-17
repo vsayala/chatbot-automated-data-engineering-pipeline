@@ -109,7 +109,9 @@ class PromptConfig(BaseModel):
     templates_path: str = "config/prompts.yaml"
     llm_enabled: bool = False
     llm_endpoint_url: str | None = None
-    llm_model: str = "gpt-4o-mini"
+    llm_provider: Literal["ollama", "openai_compatible"] = "ollama"
+    llm_model: str = "qwen2.5:14b-instruct"
+    llm_requires_api_key: bool = False
     llm_api_key_env: str = "LLM_API_KEY"
     llm_api_key: str | None = None
 

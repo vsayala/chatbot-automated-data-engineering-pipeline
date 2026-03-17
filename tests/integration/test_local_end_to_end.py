@@ -8,7 +8,7 @@ from agentic_de_pipeline.workflow.bootstrap import build_orchestrator
 
 
 def test_local_full_workflow_runs_across_all_stages(test_config) -> None:
-    """End-to-end run should complete Dev->QE->Stg->Prod in local mode."""
+    """End-to-end run should complete Dev->QE->Stg->Prod in simulate mode."""
     orchestrator = build_orchestrator(test_config)
 
     summary = orchestrator.run_once()

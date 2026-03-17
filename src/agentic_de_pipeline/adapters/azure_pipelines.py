@@ -34,7 +34,7 @@ class AzurePipelinesClient:
     def run_cicd(self, environment: str, plan: RequirementPlan) -> PipelineRunResult:
         """Run CI/CD pipeline and return run metadata."""
         with timed_operation(self.logger, f"run_cicd_{environment}"):
-            if self.config.local_mode:
+            if self.config.is_simulate_mode():
                 return self._simulate_pipeline(environment, plan)
             return self._trigger_real_pipeline(environment, plan)
 
@@ -59,6 +59,7 @@ class AzurePipelinesClient:
             started_at=start,
             finished_at=finish,
             dashboard_url=f"http://localhost/pipelines/{run_id}",
+            logs_url=f"http://localhost/pipelines/{run_id}/logs",
         )
 
     def _trigger_real_pipeline(self, environment: str, plan: RequirementPlan) -> PipelineRunResult:
@@ -171,7 +172,49 @@ class AzurePipelinesClient:
             started_at=start,
             finished_at=finish,
             dashboard_url=current.get("_links", {}).get("web", {}).get("href", ""),
+            logs_url=current.get("_links", {}).get("logs", {}).get("href", ""),
         )
+
+    def get_failure_context(self, run_result: PipelineRunResult, max_chars: int = 6000) -> str:
+        """Fetch pipeline failure context and log snippets for remediation analysis."""
+        if run_result.status.lower() in {"succeeded", "success", "completed"}:
+            return ""
+        if self.config.is_simulate_mode():
+            return (
+                f"Simulated pipeline failure context for run_id={run_result.run_id}. "
+                "Example error: schema mismatch on target table write."
+            )
+
+        if not run_result.logs_url:
+            return f"No logs URL available for failed run_id={run_result.run_id}."
+
+        import base64
+        import urllib.request
+
+        pat = resolve_secret(
+            direct_value=self.config.azure_pipelines.personal_access_token,
+            env_name=self.config.azure_pipelines.personal_access_token_env,
+            secret_label="Azure DevOps PAT",
+            required=True,
+        )
+        basic = base64.b64encode(f":{pat}".encode("utf-8")).decode("utf-8")
+        headers = {
+            "Authorization": f"Basic {basic}",
+            "Content-Type": "application/json",
+        }
+        request = urllib.request.Request(run_result.logs_url, headers=headers, method="GET")
+
+        def _fetch_logs() -> str:
+            with urllib.request.urlopen(request, timeout=30) as response:  # nosec B310
+                return response.read().decode("utf-8")
+
+        body = run_with_retry(
+            operation_name=f"azure_pipeline_logs_{run_result.environment}",
+            action=_fetch_logs,
+            policy=self.retry_policy,
+            logger=self.logger,
+        )
+        return body[:max_chars]
 
     # Production hardening (commented guidance):
     # ------------------------------------------------------------------

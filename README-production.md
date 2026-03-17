@@ -11,15 +11,18 @@ Deploy this agentic CI/CD system in enterprise environments using:
 - Priority-based intake from PBIs/Bugs/User Stories
 - Repo identification from work-item tags or default repo config
 - Branch-per-work-item automation (`feature/pbi-<id>-...`)
+- New repository provisioning when required (config-controlled)
 - Developer checks before CI/CD
 - PR creation hooks for QE promotion workflows
 - Stage-by-stage approvals and test controls
+- Clarification loop for incomplete requirements with DevOps discussion audit record
 - Preflight connectivity validation and fail-fast startup
 - Retry policy for transient external API failures
 - Idempotent work-item processing to avoid duplicate deployments
+- Failure remediation loop with HIL approvals before fix attempts
 
 ## Config strategy
-Use `config/config_prod.yaml` and provide:
+Use `config/config_connected.yaml` and provide:
 - DevOps board URL + organization/project
 - Repos URL + repository
 - Pipelines URL/prefix
@@ -27,10 +30,16 @@ Use `config/config_prod.yaml` and provide:
 - Prompt and MCP configuration
 
 ### Why two YAML files?
-- `config/config_local.yaml` is for safe local runs, mock/testing, and quick iteration.
-- `config/config_prod.yaml` is for real service endpoints, stricter approvals, and hosted LLM/MCP wiring.
+- `config/config_simulate.yaml` is for safe dry-run/mock iterations.
+- `config/config_connected.yaml` is for real service endpoints, stricter approvals, and hosted LLM/MCP wiring.
 
 Keeping them separate avoids accidental production calls during development.
+
+### Runtime profile model (updated)
+- `integration_mode: "simulate"` means dry-run/mock integration behavior.
+- `integration_mode: "connected"` means real Azure service calls.
+- `deployment_strategy: "dev_first_promotion"` captures your architecture intent explicitly.
+- `security.strict_private_mode: true` enforces private/internal LLM and MCP endpoints.
 
 ### Recommended workflow for your current model
 If Databricks changes are done in DEV and Azure Pipelines handles promotions, keep:
@@ -83,6 +92,12 @@ Cross-cutting:
 - `GET /approvals/pending-with-suggestions`
 - `GET /approvals/{request_id}/suggestion`
 - `GET /preflight/run`
+
+## In-house LLM recommendation
+For private enterprise usage, run local inference (e.g., Ollama) and use:
+- `prompts.llm_provider: "ollama"`
+- internal endpoint such as `http://127.0.0.1:11434/v1/chat/completions`
+- `prompts.llm_requires_api_key: false`
 
 ## Example secure deployment notes (commented for activation)
 ```yaml

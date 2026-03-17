@@ -26,33 +26,61 @@ class DeveloperWorkflowService:
             return "skipped", "Repository automation disabled in runtime config"
 
         try:
-            configured_repo = self.repos_client.repo_config.repository_name
-            if plan.target_repo != configured_repo:
-                message = (
-                    f"target_repo={plan.target_repo} does not match configured repository={configured_repo}. "
-                    "Update azure_repos.repository_name/local_checkout_path or add repo routing support."
-                )
-                if self.repos_client.repo_config.dry_run:
-                    self.logger.warning("developer_workflow_repo_mismatch %s", message)
-                else:
-                    return "failed", message
+            ready, repo_msg = self.repos_client.ensure_repository(plan.target_repo)
+            if not ready:
+                return "failed", repo_msg
 
-            branch_name = self.repos_client.prepare_branch(work_item)
+            branch_name = self.repos_client.prepare_branch(work_item, plan.target_repo)
             change_file = "dry-run/no-change-file"
             if not self.repos_client.repo_config.dry_run:
                 change_file = self._write_work_item_change_stub(work_item, plan)
 
-            tests_passed, test_output = self.repos_client.run_basic_tests()
+            tests_passed, test_output = self.repos_client.run_basic_tests(plan.target_repo)
             if not tests_passed:
                 return "failed", f"basic tests failed on branch={branch_name}. output={test_output}"
 
-            branch_name = self.repos_client.commit_and_push(work_item)
-            pr_url = self.repos_client.create_pull_request(work_item, branch_name)
-            detail = f"branch={branch_name}; change_file={change_file}; tests=passed; pr={pr_url}"
+            branch_name = self.repos_client.commit_and_push(work_item, plan.target_repo)
+            pr_url = self.repos_client.create_pull_request(work_item, branch_name, plan.target_repo)
+            detail = (
+                f"repo={plan.target_repo}; repo_status={repo_msg}; branch={branch_name}; "
+                f"change_file={change_file}; tests=passed; pr={pr_url}"
+            )
             self.logger.info("developer_workflow_completed work_item_id=%s", work_item.id)
             return "succeeded", detail
         except Exception as exc:  # pylint: disable=broad-except
             self.logger.exception("developer_workflow_failed work_item_id=%s", work_item.id)
+            return "failed", str(exc)
+
+    def apply_remediation(
+        self,
+        work_item: WorkItem,
+        plan: RequirementPlan,
+        environment: str,
+        suggestion: str,
+        attempt: int,
+    ) -> tuple[str, str]:
+        """Apply remediation artifact and rerun developer validation steps."""
+        try:
+            artifact = self._write_remediation_artifact(work_item, plan, environment, suggestion, attempt)
+            tests_passed, test_output = self.repos_client.run_basic_tests(plan.target_repo)
+            if not tests_passed:
+                return "failed", f"remediation tests failed: {test_output}"
+            branch_name = self.repos_client.commit_and_push(work_item, plan.target_repo)
+            detail = f"remediation_artifact={artifact}; branch={branch_name}; tests=passed"
+            self.logger.info(
+                "developer_remediation_completed work_item_id=%s environment=%s attempt=%s",
+                work_item.id,
+                environment,
+                attempt,
+            )
+            return "succeeded", detail
+        except Exception as exc:  # pylint: disable=broad-except
+            self.logger.exception(
+                "developer_remediation_failed work_item_id=%s environment=%s attempt=%s",
+                work_item.id,
+                environment,
+                attempt,
+            )
             return "failed", str(exc)
 
     @staticmethod
@@ -72,6 +100,34 @@ class DeveloperWorkflowService:
                     f"Target Table: {plan.target_catalog}.{plan.target_schema}.{plan.target_table}",
                     f"Ingestion Mode: {plan.ingestion_mode}",
                     f"Source Types: {', '.join(plan.source_types)}",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        return str(file_path)
+
+    @staticmethod
+    def _write_remediation_artifact(
+        work_item: WorkItem,
+        plan: RequirementPlan,
+        environment: str,
+        suggestion: str,
+        attempt: int,
+    ) -> str:
+        """Write remediation note artifact for traceability and review."""
+        folder = Path("generated_changes")
+        folder.mkdir(parents=True, exist_ok=True)
+        file_path = folder / f"remediation_{work_item.id}_{environment}_attempt_{attempt}.md"
+        file_path.write_text(
+            "\n".join(
+                [
+                    f"# Remediation for Work Item {work_item.id}",
+                    f"Environment: {environment}",
+                    f"Attempt: {attempt}",
+                    f"Repo: {plan.target_repo}",
+                    f"Target Table: {plan.target_catalog}.{plan.target_schema}.{plan.target_table}",
+                    "Suggested Fix:",
+                    suggestion,
                 ]
             ),
             encoding="utf-8",

@@ -8,8 +8,9 @@ from typing import Any
 
 import yaml
 
-from agentic_de_pipeline.config import PromptConfig
+from agentic_de_pipeline.config import PromptConfig, SecurityConfig
 from agentic_de_pipeline.logging_utils import get_module_logger
+from agentic_de_pipeline.utils.network import is_internal_endpoint
 from agentic_de_pipeline.utils.retry import RetryPolicy, run_with_retry
 from agentic_de_pipeline.utils.secrets import resolve_secret
 
@@ -17,8 +18,15 @@ from agentic_de_pipeline.utils.secrets import resolve_secret
 class PromptEngine:
     """Loads prompt templates and optionally calls hosted LLM endpoints."""
 
-    def __init__(self, config: PromptConfig, log_dir: str, retry_policy: RetryPolicy | None = None) -> None:
+    def __init__(
+        self,
+        config: PromptConfig,
+        log_dir: str,
+        retry_policy: RetryPolicy | None = None,
+        security_config: SecurityConfig | None = None,
+    ) -> None:
         self.config = config
+        self.security_config = security_config
         self.retry_policy = retry_policy or RetryPolicy(attempts=2, initial_delay_seconds=0.5, max_delay_seconds=2.0)
         self.logger = get_module_logger(
             module_name="agentic_de_pipeline.prompt_engine",
@@ -53,14 +61,19 @@ class PromptEngine:
         if not self.config.llm_enabled or not self.config.llm_endpoint_url:
             return prompt
 
-        import urllib.request
+        if (
+            self.security_config
+            and self.security_config.strict_private_mode
+            and self.security_config.enforce_internal_llm_endpoint
+        ):
+            if not is_internal_endpoint(
+                endpoint_url=self.config.llm_endpoint_url,
+                internal_hostname_suffixes=self.security_config.internal_hostname_suffixes,
+                allow_private_ip_ranges=self.security_config.allow_private_ip_ranges,
+            ):
+                raise RuntimeError("Strict private mode blocked non-internal LLM endpoint.")
 
-        api_key = resolve_secret(
-            direct_value=self.config.llm_api_key,
-            env_name=self.config.llm_api_key_env,
-            secret_label="LLM API key",
-            required=True,
-        )
+        import urllib.request
 
         payload = {
             "model": self.config.llm_model,
@@ -69,10 +82,15 @@ class PromptEngine:
                 {"role": "user", "content": prompt},
             ],
         }
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if self.config.llm_requires_api_key:
+            api_key = resolve_secret(
+                direct_value=self.config.llm_api_key,
+                env_name=self.config.llm_api_key_env,
+                secret_label="LLM API key",
+                required=True,
+            )
+            headers["Authorization"] = f"Bearer {api_key}"
         req = urllib.request.Request(
             self.config.llm_endpoint_url,
             data=json.dumps(payload).encode("utf-8"),

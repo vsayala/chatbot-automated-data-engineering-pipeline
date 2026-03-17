@@ -10,6 +10,7 @@ from agentic_de_pipeline.adapters.databricks import DatabricksWorkspaceClient
 from agentic_de_pipeline.agents.implementation_agent import ImplementationAgent
 from agentic_de_pipeline.agents.promotion_agent import PromotionAgent
 from agentic_de_pipeline.agents.qa_agent import QAAgent
+from agentic_de_pipeline.agents.remediation_agent import FailureRemediationAgent
 from agentic_de_pipeline.agents.requirement_agent import RequirementAgent
 from agentic_de_pipeline.approvals.human_loop import HumanApprovalService
 from agentic_de_pipeline.logging_utils import get_module_logger
@@ -40,6 +41,11 @@ class AgenticOrchestrator:
         require_preflight_before_run: bool,
         enable_idempotency: bool,
         fail_fast: bool,
+        remediation_agent: FailureRemediationAgent | None,
+        enable_failure_remediation: bool,
+        max_failure_remediation_attempts: int,
+        require_hil_approval_for_remediation: bool,
+        require_hil_approval_for_repo_actions: bool,
         max_work_items_per_run: int,
         stage_sequence: list[str],
         databricks_apply_in_stages: list[str],
@@ -61,6 +67,11 @@ class AgenticOrchestrator:
         self.require_preflight_before_run = require_preflight_before_run
         self.enable_idempotency = enable_idempotency
         self.fail_fast = fail_fast
+        self.remediation_agent = remediation_agent
+        self.enable_failure_remediation = enable_failure_remediation
+        self.max_failure_remediation_attempts = max_failure_remediation_attempts
+        self.require_hil_approval_for_remediation = require_hil_approval_for_remediation
+        self.require_hil_approval_for_repo_actions = require_hil_approval_for_repo_actions
         self.max_work_items_per_run = max_work_items_per_run
         self.stage_sequence = stage_sequence
         self.databricks_apply_in_stages = set(databricks_apply_in_stages)
@@ -106,6 +117,79 @@ class AgenticOrchestrator:
 
             try:
                 plan = self.requirement_agent.build_plan(work_item)
+                clarification_status = "not_required"
+                clarification_details = ""
+                if plan.needs_clarification:
+                    clarification = self.approval_service.request_clarification(
+                        work_item_id=work_item.id,
+                        work_item_title=work_item.title,
+                        questions=plan.clarification_questions,
+                    )
+                    if clarification.status != "answered":
+                        clarification_status = clarification.status
+                        clarification_details = "Clarification not completed within required window."
+                        summary = WorkflowRunSummary(
+                            work_item_id=work_item.id,
+                            work_item_title=work_item.title,
+                            overall_status="failed",
+                            repo_workflow_status="failed",
+                            repo_workflow_details="clarification_required",
+                            stage_results=[],
+                            clarification_status=clarification_status,
+                            clarification_details=clarification_details,
+                        )
+                        if self.enable_idempotency:
+                            self.idempotency_store.mark_finished(run_key, "failed")
+                        return summary
+
+                    plan = self.requirement_agent.apply_clarification_answers(plan, clarification.answers)
+                    clarification_status = "answered"
+                    clarification_details = f"clarification_request_id={clarification.request_id}"
+                    comment = self._format_clarification_comment(clarification.request_id, clarification.answers)
+                    self.devops_client.add_work_item_discussion_comment(work_item.id, comment)
+                    if plan.needs_clarification:
+                        clarification_status = "incomplete"
+                        clarification_details = (
+                            f"clarification_request_id={clarification.request_id}; "
+                            "remaining_questions=" + ",".join(plan.clarification_questions)
+                        )
+                        summary = WorkflowRunSummary(
+                            work_item_id=work_item.id,
+                            work_item_title=work_item.title,
+                            overall_status="failed",
+                            repo_workflow_status="failed",
+                            repo_workflow_details="clarification_incomplete",
+                            stage_results=[],
+                            clarification_status=clarification_status,
+                            clarification_details=clarification_details,
+                        )
+                        if self.enable_idempotency:
+                            self.idempotency_store.mark_finished(run_key, "failed")
+                        return summary
+
+                if self.require_hil_approval_for_repo_actions:
+                    repo_approval = self.approval_service.request_approval(
+                        stage="repo_actions",
+                        summary=(
+                            f"Approve repository/code changes for work_item_id={work_item.id}, "
+                            f"repo={plan.target_repo}, branch={plan.branch_name}"
+                        ),
+                    )
+                    if repo_approval.status != ApprovalStatus.APPROVED:
+                        summary = WorkflowRunSummary(
+                            work_item_id=work_item.id,
+                            work_item_title=work_item.title,
+                            overall_status="failed",
+                            repo_workflow_status="failed",
+                            repo_workflow_details="repo_action_approval_denied",
+                            stage_results=[],
+                            clarification_status=clarification_status,
+                            clarification_details=clarification_details,
+                        )
+                        if self.enable_idempotency:
+                            self.idempotency_store.mark_finished(run_key, "failed")
+                        return summary
+
                 repo_status, repo_details = self.developer_workflow.execute(work_item=work_item, plan=plan)
 
                 stage_results: list[StageResult] = []
@@ -144,6 +228,7 @@ class AgenticOrchestrator:
                             overall_status = "failed"
                             break
 
+                    remediation_trail: list[str] = []
                     if environment in self.databricks_apply_in_stages:
                         db_result = self.databricks_client.apply_plan(environment=environment, plan=plan)
                         databricks_details = db_result.details
@@ -157,6 +242,58 @@ class AgenticOrchestrator:
                         qa_passed=qa_passed,
                     )
 
+                    if (
+                        not can_promote
+                        and self.enable_failure_remediation
+                        and self.max_failure_remediation_attempts > 0
+                        and self.remediation_agent is not None
+                    ):
+                        for attempt in range(1, self.max_failure_remediation_attempts + 1):
+                            failure_context = self.pipelines_client.get_failure_context(pipeline_result)
+                            suggestion = self.remediation_agent.suggest_fix(
+                                environment=environment,
+                                plan=plan,
+                                failure_context=failure_context,
+                                attempt=attempt,
+                            )
+                            if self.require_hil_approval_for_remediation:
+                                remediation_approval = self.approval_service.request_approval(
+                                    stage=f"{environment}_remediation_{attempt}",
+                                    summary=suggestion,
+                                )
+                                if remediation_approval.status != ApprovalStatus.APPROVED:
+                                    remediation_trail.append(
+                                        f"attempt={attempt}: remediation approval denied "
+                                        f"by {remediation_approval.approver}"
+                                    )
+                                    break
+
+                            remediation_status, remediation_detail = self.developer_workflow.apply_remediation(
+                                work_item=work_item,
+                                plan=plan,
+                                environment=environment,
+                                suggestion=suggestion,
+                                attempt=attempt,
+                            )
+                            remediation_trail.append(
+                                f"attempt={attempt}: status={remediation_status}; detail={remediation_detail}"
+                            )
+                            if remediation_status != "succeeded":
+                                continue
+
+                            pipeline_result = self.pipelines_client.run_cicd(environment=environment, plan=plan)
+                            qa_passed, qa_details = self.qa_agent.validate_stage(environment=environment, plan=plan)
+                            can_promote, promotion_reason = self.promotion_agent.can_promote(
+                                environment=environment,
+                                pipeline_status=pipeline_result.status,
+                                qa_passed=qa_passed,
+                            )
+                            if can_promote:
+                                remediation_trail.append(
+                                    f"attempt={attempt}: pipeline recovered and QA passed"
+                                )
+                                break
+
                     stage_status = "succeeded" if can_promote else "failed"
                     details = " | ".join(
                         [
@@ -166,6 +303,7 @@ class AgenticOrchestrator:
                             f"pipeline_run_id={pipeline_result.run_id}",
                             qa_details,
                             promotion_reason,
+                            ("remediation=" + " ; ".join(remediation_trail)) if remediation_trail else "",
                         ]
                     )
                     stage_results.append(
@@ -199,6 +337,8 @@ class AgenticOrchestrator:
                     repo_workflow_status=repo_status,
                     repo_workflow_details=repo_details,
                     stage_results=stage_results,
+                    clarification_status=clarification_status,
+                    clarification_details=clarification_details,
                 )
                 self.logger.info(
                     "orchestrator_completed work_item_id=%s status=%s stages=%s repo_status=%s",
@@ -224,3 +364,32 @@ class AgenticOrchestrator:
                     repo_workflow_details=str(exc),
                     stage_results=[],
                 )
+
+    def list_active_work_items(self, limit: int = 50) -> list[dict]:
+        """List active work items for HIL review and bulk clarification checks."""
+        items = self.devops_client.fetch_active_work_items(limit=limit)
+        output: list[dict] = []
+        for item in items:
+            plan = self.requirement_agent.build_plan(item)
+            output.append(
+                {
+                    "id": item.id,
+                    "title": item.title,
+                    "type": item.item_type.value,
+                    "priority": item.priority,
+                    "repo_name": item.repo_name,
+                    "state": item.state,
+                    "needs_clarification": plan.needs_clarification,
+                    "clarification_questions": plan.clarification_questions,
+                }
+            )
+        return output
+
+    @staticmethod
+    def _format_clarification_comment(request_id: str, answers: dict[str, str]) -> str:
+        """Format clarification Q/A for DevOps work-item discussion trail."""
+        lines = [f"[Agent Clarification Record] request_id={request_id}"]
+        for question, answer in answers.items():
+            lines.append(f"Q: {question}")
+            lines.append(f"A: {answer}")
+        return "\\n".join(lines)

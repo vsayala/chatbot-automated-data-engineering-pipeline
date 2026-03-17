@@ -19,6 +19,13 @@ class ApprovalDecisionPayload(BaseModel):
     comment: str = Field(default="", max_length=500)
 
 
+class ClarificationResponsePayload(BaseModel):
+    """Payload for clarification responses from human approver."""
+
+    responder: str = Field(..., min_length=2, max_length=128)
+    answers: dict[str, str] = Field(default_factory=dict)
+
+
 def create_app(config_path: str) -> FastAPI:
     """Create and configure FastAPI app."""
     app = FastAPI(title="Agentic Data Engineering Chat API", version="0.1.0")
@@ -33,6 +40,22 @@ def create_app(config_path: str) -> FastAPI:
     def list_pending_approvals() -> dict[str, list[dict]]:
         pending = orchestrator.approval_service.list_pending()
         return {"pending": pending}
+
+    @app.get("/clarifications/pending")
+    def list_pending_clarifications() -> dict[str, list[dict]]:
+        pending = orchestrator.approval_service.list_pending_clarifications()
+        return {"pending": pending}
+
+    @app.post("/clarifications/{request_id}/response")
+    def submit_clarification_response(request_id: str, payload: ClarificationResponsePayload) -> dict[str, str]:
+        updated = orchestrator.approval_service.submit_clarification_answers(
+            request_id=request_id,
+            responder=payload.responder,
+            answers=payload.answers,
+        )
+        if not updated:
+            raise HTTPException(status_code=404, detail="Clarification request not found")
+        return {"status": "updated", "request_id": request_id}
 
     @app.get("/approvals/pending-with-suggestions")
     def list_pending_with_suggestions() -> dict[str, list[dict]]:
@@ -118,5 +141,10 @@ def create_app(config_path: str) -> FastAPI:
     def run_preflight() -> dict[str, dict[str, str]]:
         checks = orchestrator.preflight_validator.run_checks()
         return {"checks": checks}
+
+    @app.get("/work-items/active")
+    def list_active_work_items(limit: int = 50) -> dict[str, list[dict]]:
+        items = orchestrator.list_active_work_items(limit=limit)
+        return {"items": items}
 
     return app

@@ -65,7 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Agentic data engineering CI/CD orchestrator")
     parser.add_argument(
         "--config",
-        default="config/config_local.yaml",
+        default="config/config_simulate.yaml",
         help="Path to config file",
     )
 

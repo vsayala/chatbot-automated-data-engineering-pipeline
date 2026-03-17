@@ -55,16 +55,43 @@ function renderApprovals(rows) {
   rows.forEach((row) => {
     const div = document.createElement('div');
     div.className = 'item';
-    div.innerHTML = `
-      <strong>${row.stage}</strong>
-      <div>${row.summary}</div>
-      <div class="small">request_id=${row.request_id}</div>
-      <input id="comment-${row.request_id}" placeholder="comment" />
-      <div class="approval-actions">
-        <button data-id="${row.request_id}" data-approve="true">Approve</button>
-        <button class="danger" data-id="${row.request_id}" data-approve="false">Reject</button>
-      </div>
-    `;
+
+    const stageEl = document.createElement('strong');
+    stageEl.textContent = row.stage;
+    div.appendChild(stageEl);
+
+    const summaryEl = document.createElement('div');
+    summaryEl.textContent = row.summary;
+    div.appendChild(summaryEl);
+
+    const requestInfoEl = document.createElement('div');
+    requestInfoEl.className = 'small';
+    requestInfoEl.textContent = 'request_id=' + row.request_id;
+    div.appendChild(requestInfoEl);
+
+    const commentInput = document.createElement('input');
+    commentInput.id = `comment-${row.request_id}`;
+    commentInput.setAttribute('placeholder', 'comment');
+    div.appendChild(commentInput);
+
+    const actionsContainer = document.createElement('div');
+    actionsContainer.className = 'approval-actions';
+
+    const approveButton = document.createElement('button');
+    approveButton.textContent = 'Approve';
+    approveButton.setAttribute('data-id', String(row.request_id));
+    approveButton.setAttribute('data-approve', 'true');
+    actionsContainer.appendChild(approveButton);
+
+    const rejectButton = document.createElement('button');
+    rejectButton.textContent = 'Reject';
+    rejectButton.className = 'danger';
+    rejectButton.setAttribute('data-id', String(row.request_id));
+    rejectButton.setAttribute('data-approve', 'false');
+    actionsContainer.appendChild(rejectButton);
+
+    div.appendChild(actionsContainer);
+
     node.appendChild(div);
   });
 

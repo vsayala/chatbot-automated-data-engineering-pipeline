@@ -133,6 +133,11 @@ For in-house Ollama/OpenAI-compatible local endpoints, keep:
      -d '{"approved": true, "approver": "engineer@local", "comment": "Looks good"}'
    ```
 
+12. Open HIL operator interface:
+   ```
+   http://localhost:8000/ui
+   ```
+
 ## Runtime and safety flags
 - `azure_repos.dry_run: true` => simulate branch/commit/push/PR calls safely.
 - `runtime.enable_repo_automation: true` => enable repository lifecycle automation.
@@ -143,6 +148,9 @@ For in-house Ollama/OpenAI-compatible local endpoints, keep:
 - `runtime.retry_*` => retry policy for transient network failures.
 - `runtime.enable_failure_remediation: true` => attempt automated recovery on pipeline failure.
 - `runtime.max_failure_remediation_attempts` => retry budget for fix-and-rerun loop.
+- `transformers.enabled: true` => enable repo-specific remediation code transformers.
+- `transformers.enabled_plugins` => control active plugins (`databricks_notebook`, `sql`, `python_etl`).
+- `transformers.allow_fallback_artifact` => if no plugin can patch code, emit remediation artifact note.
 
 ## Logging
 - Master log: `logs/project_master.log`

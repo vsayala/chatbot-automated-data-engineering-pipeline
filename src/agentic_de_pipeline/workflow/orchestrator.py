@@ -272,6 +272,7 @@ class AgenticOrchestrator:
                                 work_item=work_item,
                                 plan=plan,
                                 environment=environment,
+                                failure_context=failure_context,
                                 suggestion=suggestion,
                                 attempt=attempt,
                             )

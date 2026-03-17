@@ -19,6 +19,7 @@ from agentic_de_pipeline.services.mcp_router import MCPRouter
 from agentic_de_pipeline.services.preflight import PreflightValidator
 from agentic_de_pipeline.services.prompt_engine import PromptEngine
 from agentic_de_pipeline.state_store import IdempotencyStore, LearningStore
+from agentic_de_pipeline.transformers import TransformerRegistry
 from agentic_de_pipeline.utils.retry import RetryPolicy
 from agentic_de_pipeline.workflow.orchestrator import AgenticOrchestrator
 
@@ -64,7 +65,17 @@ def build_orchestrator(config: AppConfig) -> AgenticOrchestrator:
     remediation_agent = FailureRemediationAgent(config.logging.log_dir, prompt_engine)
     promotion_agent = PromotionAgent(config.logging.log_dir)
     approval_service = HumanApprovalService(config.approvals, config.logging.log_dir)
-    developer_workflow = DeveloperWorkflowService(repos_client, config.logging.log_dir)
+    transformer_registry = TransformerRegistry(
+        enabled_plugins=config.transformers.enabled_plugins,
+        logger=implementation_agent.logger,
+    )
+    developer_workflow = DeveloperWorkflowService(
+        repos_client,
+        config.logging.log_dir,
+        transformer_registry=transformer_registry,
+        transformers_enabled=config.transformers.enabled,
+        allow_fallback_artifact=config.transformers.allow_fallback_artifact,
+    )
 
     return AgenticOrchestrator(
         devops_client=devops_client,

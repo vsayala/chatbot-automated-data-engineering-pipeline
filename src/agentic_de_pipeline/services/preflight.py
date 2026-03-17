@@ -10,7 +10,7 @@ from pathlib import Path
 from agentic_de_pipeline.config import AppConfig
 from agentic_de_pipeline.logging_utils import get_module_logger
 from agentic_de_pipeline.services.mcp_router import MCPRouter
-from agentic_de_pipeline.utils.network import is_internal_endpoint
+from agentic_de_pipeline.utils.network import get_hostname, is_internal_endpoint, matches_hostname_suffixes
 from agentic_de_pipeline.utils.retry import RetryPolicy, run_with_retry
 from agentic_de_pipeline.utils.secrets import resolve_secret
 
@@ -199,4 +199,32 @@ class PreflightValidator:
             return "ok(disabled)"
         if self.config.integration_mode != "connected":
             return "error(strict_private_requires_connected_mode)"
+        if self.config.security.enforce_allowed_egress_hosts:
+            blocked = self._find_disallowed_egress_hosts()
+            if blocked:
+                return "error(disallowed_egress_hosts:" + ",".join(sorted(blocked)) + ")"
         return "ok"
+
+    def _find_disallowed_egress_hosts(self) -> set[str]:
+        """Return configured endpoint hosts outside allowed egress list."""
+        endpoints = [
+            self.config.azure_devops.organization_url,
+            self.config.azure_pipelines.organization_url,
+            self.config.azure_repos.organization_url,
+            self.config.prompts.llm_endpoint_url or "",
+            *list(self.config.databricks.workspace_urls.values()),
+            *list(self.config.mcp.servers.values()),
+        ]
+        disallowed: set[str] = set()
+        allowed = self.config.security.allowed_egress_hostname_suffixes
+        for endpoint in endpoints:
+            if not endpoint:
+                continue
+            hostname = get_hostname(endpoint)
+            if not hostname:
+                # Fail closed: treat endpoints with no parsed hostname as disallowed.
+                disallowed.add(endpoint)
+                continue
+            if not matches_hostname_suffixes(hostname, allowed):
+                disallowed.add(hostname)
+        return disallowed

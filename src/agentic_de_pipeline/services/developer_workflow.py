@@ -7,13 +7,24 @@ from pathlib import Path
 from agentic_de_pipeline.adapters.azure_repos import AzureReposClient
 from agentic_de_pipeline.logging_utils import get_module_logger
 from agentic_de_pipeline.models import RequirementPlan, WorkItem
+from agentic_de_pipeline.transformers import RemediationContext, TransformerRegistry
 
 
 class DeveloperWorkflowService:
     """Handles branch/test/PR cycle for each selected work item."""
 
-    def __init__(self, repos_client: AzureReposClient, log_dir: str) -> None:
+    def __init__(
+        self,
+        repos_client: AzureReposClient,
+        log_dir: str,
+        transformer_registry: TransformerRegistry | None = None,
+        transformers_enabled: bool = True,
+        allow_fallback_artifact: bool = True,
+    ) -> None:
         self.repos_client = repos_client
+        self.transformer_registry = transformer_registry
+        self.transformers_enabled = transformers_enabled
+        self.allow_fallback_artifact = allow_fallback_artifact
         self.logger = get_module_logger(
             module_name="agentic_de_pipeline.developer_workflow",
             log_dir=log_dir,
@@ -33,7 +44,11 @@ class DeveloperWorkflowService:
             branch_name = self.repos_client.prepare_branch(work_item, plan.target_repo)
             change_file = "dry-run/no-change-file"
             if not self.repos_client.repo_config.dry_run:
-                change_file = self._write_work_item_change_stub(work_item, plan)
+                change_file = self._write_work_item_change_stub(
+                    work_item=work_item,
+                    plan=plan,
+                    repo_path=self.repos_client.get_checkout_path(plan.target_repo),
+                )
 
             tests_passed, test_output = self.repos_client.run_basic_tests(plan.target_repo)
             if not tests_passed:
@@ -56,17 +71,50 @@ class DeveloperWorkflowService:
         work_item: WorkItem,
         plan: RequirementPlan,
         environment: str,
+        failure_context: str,
         suggestion: str,
         attempt: int,
     ) -> tuple[str, str]:
-        """Apply remediation artifact and rerun developer validation steps."""
+        """Apply remediation code changes and rerun developer validation steps."""
         try:
-            artifact = self._write_remediation_artifact(work_item, plan, environment, suggestion, attempt)
+            repo_path = self.repos_client.get_checkout_path(plan.target_repo)
+            remediation_reference = ""
+            if self.transformers_enabled and self.transformer_registry is not None:
+                report = self.transformer_registry.apply(
+                    RemediationContext(
+                        work_item=work_item,
+                        plan=plan,
+                        environment=environment,
+                        failure_context=failure_context,
+                        suggestion=suggestion,
+                        attempt=attempt,
+                        repo_path=repo_path,
+                    )
+                )
+                if report.was_changed:
+                    remediation_reference = (
+                        f"transformers={report.to_summary()}; "
+                        f"changed_files={','.join(report.changed_files)}"
+                    )
+
+            if not remediation_reference:
+                if not self.allow_fallback_artifact:
+                    return "failed", "No remediation transformers applied and fallback artifact is disabled."
+                artifact = self._write_remediation_artifact(
+                    work_item=work_item,
+                    plan=plan,
+                    environment=environment,
+                    suggestion=suggestion,
+                    attempt=attempt,
+                    repo_path=repo_path,
+                )
+                remediation_reference = f"remediation_artifact={artifact}"
+
             tests_passed, test_output = self.repos_client.run_basic_tests(plan.target_repo)
             if not tests_passed:
                 return "failed", f"remediation tests failed: {test_output}"
             branch_name = self.repos_client.commit_and_push(work_item, plan.target_repo)
-            detail = f"remediation_artifact={artifact}; branch={branch_name}; tests=passed"
+            detail = f"{remediation_reference}; branch={branch_name}; tests=passed"
             self.logger.info(
                 "developer_remediation_completed work_item_id=%s environment=%s attempt=%s",
                 work_item.id,
@@ -84,9 +132,13 @@ class DeveloperWorkflowService:
             return "failed", str(exc)
 
     @staticmethod
-    def _write_work_item_change_stub(work_item: WorkItem, plan: RequirementPlan) -> str:
+    def _write_work_item_change_stub(
+        work_item: WorkItem,
+        plan: RequirementPlan,
+        repo_path: Path,
+    ) -> str:
         """Create local code artifact documenting automated work-item changes."""
-        folder = Path("generated_changes")
+        folder = repo_path / "generated_changes"
         folder.mkdir(parents=True, exist_ok=True)
         file_path = folder / f"work_item_{work_item.id}.md"
         file_path.write_text(
@@ -113,9 +165,10 @@ class DeveloperWorkflowService:
         environment: str,
         suggestion: str,
         attempt: int,
+        repo_path: Path,
     ) -> str:
         """Write remediation note artifact for traceability and review."""
-        folder = Path("generated_changes")
+        folder = repo_path / "generated_changes"
         folder.mkdir(parents=True, exist_ok=True)
         file_path = folder / f"remediation_{work_item.id}_{environment}_attempt_{attempt}.md"
         file_path.write_text(

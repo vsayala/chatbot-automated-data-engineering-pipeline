@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from agentic_de_pipeline.logging_utils import get_module_logger
-from agentic_de_pipeline.models import RequirementPlan, WorkItem, WorkItemType
+from agentic_de_pipeline.models import RequirementPlan, WorkItem
 from agentic_de_pipeline.services.mcp_router import MCPRouter
 from agentic_de_pipeline.services.prompt_engine import PromptEngine
 from agentic_de_pipeline.state_store import LearningStore
@@ -172,15 +172,6 @@ class RequirementAgent:
         repo_from_answer = self._extract_repo_from_answers(normalized_answers)
         if repo_from_answer:
             plan.target_repo = repo_from_answer
-            plan.branch_name = self._build_branch_name(
-                WorkItem(
-                    id=plan.work_item_id,
-                    title=plan.summary,
-                    description="",
-                    item_type=WorkItemType.USER_STORY,
-                    repo_name=repo_from_answer,
-                )
-            )
 
         plan.clarification_answers.update(normalized_answers)
         remaining = [question for question in plan.clarification_questions if not self._has_answer_for(question, normalized_answers)]

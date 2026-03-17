@@ -118,7 +118,7 @@ class DeveloperWorkflowStub:
         return "succeeded", "initial workflow ok"
 
     @staticmethod
-    def apply_remediation(work_item, plan, environment, suggestion, attempt):  # noqa: ANN001
+    def apply_remediation(work_item, plan, environment, failure_context, suggestion, attempt):  # noqa: ANN001
         return "succeeded", f"applied remediation attempt={attempt}"
 
 

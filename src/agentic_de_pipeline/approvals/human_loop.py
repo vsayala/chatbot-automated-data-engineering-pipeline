@@ -83,6 +83,25 @@ class HumanApprovalService:
             self.logger.info("clarification_answers_saved request_id=%s responder=%s", request_id, responder)
         return updated
 
+    def update_clarification_status(self, request_id: str, status: str, responder: str, answers: dict[str, str] | None = None) -> bool:
+        """Update clarification status directly without forcing answered state."""
+        data = self.store.read()
+        updated = False
+        for row in data.get("clarifications", []):
+            if row.get("request_id") == request_id:
+                row["status"] = status
+                row["responder"] = responder
+                if answers is not None:
+                    row["answers"] = answers
+                    data["last_answers"] = answers
+                data["last_request_id"] = request_id
+                row["updated_at"] = datetime.now(UTC).isoformat()
+                updated = True
+                break
+        if updated:
+            self.store.write(data)
+        return updated
+
     def request_clarification(
         self,
         work_item_id: int,
@@ -156,13 +175,13 @@ class HumanApprovalService:
                 return current
             time.sleep(5)
 
-        self.submit_clarification_answers(
+        self.update_clarification_status(
             request_id=request_id,
+            status="timed_out",
             responder="system-timeout",
             answers={},
         )
         timed_out = self.get_clarification(request_id)
-        timed_out.status = "timed_out"
         self.logger.warning("clarification_timeout request_id=%s", request_id)
         return timed_out
 
@@ -181,6 +200,28 @@ class HumanApprovalService:
         if updated:
             self.store.write(data)
             self.logger.info("approval_decision_saved request_id=%s approved=%s", request_id, approved)
+        return updated
+
+    def update_approval_status(
+        self,
+        request_id: str,
+        status: ApprovalStatus,
+        approver: str,
+        comment: str = "",
+    ) -> bool:
+        """Set approval request status directly."""
+        data = self.store.read()
+        updated = False
+        for row in data.get("requests", []):
+            if row.get("request_id") == request_id:
+                row["status"] = status.value
+                row["approver"] = approver
+                row["comment"] = comment
+                row["updated_at"] = datetime.now(UTC).isoformat()
+                updated = True
+                break
+        if updated:
+            self.store.write(data)
         return updated
 
     def request_approval(self, stage: str, summary: str) -> ApprovalRequest:
@@ -265,14 +306,13 @@ class HumanApprovalService:
                 return current
             time.sleep(5)
 
-        self.submit_decision(
+        self.update_approval_status(
             request_id=request_id,
-            approved=False,
+            status=ApprovalStatus.TIMED_OUT,
             approver="system-timeout",
             comment="Approval timed out",
         )
         timed_out = self.get_request(request_id)
-        timed_out.status = ApprovalStatus.TIMED_OUT
         self.logger.warning("approval_timeout request_id=%s", request_id)
         return timed_out
 

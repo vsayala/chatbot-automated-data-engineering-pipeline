@@ -77,6 +77,16 @@ security:
   enforce_internal_mcp_endpoints: true
   internal_hostname_suffixes: ["localhost", "127.0.0.1", ".local", ".internal", ".corp", ".intranet"]
   allow_private_ip_ranges: true
+  enforce_allowed_egress_hosts: true
+  allowed_egress_hostname_suffixes:
+    - "dev.azure.com"
+    - ".azuredatabricks.net"
+    - "localhost"
+    - "127.0.0.1"
+    - ".local"
+    - ".internal"
+    - ".corp"
+    - ".intranet"
 
 workflow:
   stage_sequence: ["dev", "qe", "stg", "prod"]
@@ -103,5 +113,10 @@ runtime:
   enable_failure_remediation: true
   max_failure_remediation_attempts: 2
   require_hil_approval_for_remediation: true
+
+transformers:
+  enabled: true
+  enabled_plugins: ["databricks_notebook", "sql", "python_etl"]
+  allow_fallback_artifact: true
 
 learning_store_path: "state/learning_memory.json"

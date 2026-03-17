@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from agentic_de_pipeline.config import load_config
@@ -26,11 +28,31 @@ class ClarificationResponsePayload(BaseModel):
     answers: dict[str, str] = Field(default_factory=dict)
 
 
+class ChatMessagePayload(BaseModel):
+    """Payload for HIL chat messages to assistant."""
+
+    message: str = Field(..., min_length=1, max_length=4000)
+    context: dict[str, str] = Field(default_factory=dict)
+
+
 def create_app(config_path: str) -> FastAPI:
     """Create and configure FastAPI app."""
     app = FastAPI(title="Agentic Data Engineering Chat API", version="0.1.0")
     config = load_config(config_path)
     orchestrator = build_orchestrator(config)
+    frontend_dir = Path(__file__).resolve().parent / "frontend"
+
+    @app.get("/ui")
+    def ui_home() -> FileResponse:
+        return FileResponse(frontend_dir / "index.html")
+
+    @app.get("/ui/app.js")
+    def ui_script() -> FileResponse:
+        return FileResponse(frontend_dir / "app.js", media_type="application/javascript")
+
+    @app.get("/ui/styles.css")
+    def ui_styles() -> FileResponse:
+        return FileResponse(frontend_dir / "styles.css", media_type="text/css")
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -146,5 +168,29 @@ def create_app(config_path: str) -> FastAPI:
     def list_active_work_items(limit: int = 50) -> dict[str, list[dict]]:
         items = orchestrator.list_active_work_items(limit=limit)
         return {"items": items}
+
+    @app.post("/chat/message")
+    def chat_message(payload: ChatMessagePayload) -> dict[str, str]:
+        message = payload.message.strip()
+        pending_approvals = len(orchestrator.approval_service.list_pending())
+        pending_clarifications = len(orchestrator.approval_service.list_pending_clarifications())
+        active_items = len(orchestrator.list_active_work_items(limit=100))
+        prompt = orchestrator.requirement_agent.prompt_engine.render(
+            "hil_chat_response",
+            {
+                "message": message,
+                "context": payload.context,
+                "pending_approvals": pending_approvals,
+                "pending_clarifications": pending_clarifications,
+                "active_items": active_items,
+                "fallback": (
+                    "I can help with workflow control. "
+                    f"Pending approvals={pending_approvals}, pending clarifications={pending_clarifications}, "
+                    f"active items={active_items}. Request received: {message}"
+                ),
+            },
+        )
+        response = orchestrator.requirement_agent.prompt_engine.generate_text(prompt)
+        return {"response": response}
 
     return app

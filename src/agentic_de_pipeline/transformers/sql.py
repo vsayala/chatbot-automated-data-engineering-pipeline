@@ -29,7 +29,20 @@ class SQLTransformer(RemediationTransformer):
                 content = sql_path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 continue
-            if "CREATE SCHEMA IF NOT EXISTS" in content and context.plan.target_schema in content:
+            content_lower = content.lower()
+            catalog = (getattr(context.plan, "target_catalog", None) or "").lower()
+            schema = (getattr(context.plan, "target_schema", None) or "").lower()
+            schema_tokens: set[str] = set()
+            if schema:
+                schema_tokens.add(schema)
+                if catalog:
+                    schema_tokens.add(f"{catalog}.{schema}")
+                    schema_tokens.add(f'"{catalog}"."{schema}"')
+                    schema_tokens.add(f"`{catalog}`.`{schema}`")
+                    schema_tokens.add(f"[{catalog}].[{schema}]")
+            has_create_schema = "create schema if not exists" in content_lower
+            has_schema_ref = bool(schema_tokens) and any(token in content_lower for token in schema_tokens)
+            if has_create_schema and has_schema_ref:
                 continue
             sql_path.write_text(block + content, encoding="utf-8")
             changed_files.append(str(sql_path))
